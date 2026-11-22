@@ -1,0 +1,114 @@
+# HTTP API
+
+`recon serve` exposes a read-only API. There is no write endpoint, no settlement submission and
+no key material in the process.
+
+Base URL: whatever `server.bind` (default `127.0.0.1:8081`) resolves to.
+
+## Authentication
+
+`server.api_token_env` (default `RECON_API_TOKEN`) names the environment variable that holds the
+token.
+
+| Token set | Behavior |
+| --- | --- |
+| yes | `/api/v1/reconcile` requires `Authorization: Bearer <token>`; wrong or missing → `401`. |
+| no | API is open. Intended for loopback only; the server logs a warning at startup. |
+
+Comparisons are constant-time. `/healthz` never requires auth (probes must work without secrets).
+
+## `GET /healthz`
+
+`200 OK`, no body schema beyond:
+
+```json
+{
+  "status": "ok",
+  "service": "kite-x402-recon",
+  "version": "0.1.0",
+  "mode": "mock",
+  "chain_id": 2368,
+  "auth": "bearer"
+}
+```
+
+`auth` is `"bearer"` or `"disabled"`. This endpoint does not call the chain or the ledger.
+
+## `GET /api/v1/reconcile`
+
+Runs one reconciliation pass with `now = server time` and returns the report.
+
+Success: `200 OK`, `Content-Type: application/json`,
+`Cache-Control: max-age=<server.refresh_seconds>`.
+
+```json
+{
+  "mode": "mock",
+  "chain_id": 2368,
+  "generated_at": "2026-11-22T15:31:30Z",
+  "window_minutes": 60,
+  "chain_tip": 1000,
+  "summary": {
+    "total": 7, "matched": 2, "pending": 1, "mismatched": 1,
+    "failed": 1, "unknown": 2, "orphans": 1
+  },
+  "records": [
+    {
+      "id": "inv_ok",
+      "pay_to": "0x2222…",
+      "payer": "0x4444…",
+      "amount_atomic": "10000",
+      "outcome": "matched",
+      "reason": "transfer of 10000 atomic units confirmed at block 990",
+      "tx_hash": "0x1111…",
+      "block_number": 990,
+      "confirmations": 11
+    }
+  ],
+  "orphans": [
+    {
+      "tx_hash": "0x6666…",
+      "block_number": 999,
+      "from": "0x9999…",
+      "to": "0x2222…",
+      "amount_atomic": "25000"
+    }
+  ]
+}
+```
+
+Field notes:
+
+- `mode` is always present; `mock` means the numbers came from a fixture, never from a chain.
+- `outcome` ∈ `matched | pending | mismatched | failed | unknown`.
+- `recovered_by` appears only when the log-search path produced the match (`"log_search"`).
+- `tx_hash`, `payer`, `block_number`, `confirmations` are omitted when not applicable.
+- `summary.orphans` equals `orphans.length`.
+
+## Errors
+
+All errors are JSON: `{"error": "<message>"}`.
+
+| Status | When |
+| --- | --- |
+| 401 | Missing/invalid bearer token. |
+| 502 | Ledger read or chain RPC failed; message names the failing step. |
+| 500 | Serialisation failure (should not happen; reported rather than panicking). |
+
+There is no request body, so no 400 class beyond auth. Retries are the client's business; the
+endpoint is idempotent per `now`.
+
+## Example
+
+```bash
+export RECON_API_TOKEN=dev-token
+recon --config recon.toml serve &
+curl -s localhost:8081/healthz
+curl -s -H "Authorization: Bearer dev-token" localhost:8081/api/v1/reconcile \
+  | jq '{mode, summary}'
+```
+
+## Contract tests
+
+`tests/http_api.rs` exercises the router directly (no port binding): health, 401 without token,
+200 with token, and the exact summary of the bundled fixtures.
