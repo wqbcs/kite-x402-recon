@@ -20,6 +20,16 @@ pub fn preset_rpc(chain_id: u64) -> Option<&'static str> {
     }
 }
 
+/// Token addresses published for Kite. Testnet comes from the Service Provider
+/// Guide in the Kite docs; mainnet pairs assets via bridges and is intentionally
+/// left to the operator, because guessing the settlement asset is unacceptable.
+pub fn preset_token(chain_id: u64) -> Option<&'static str> {
+    match chain_id {
+        2368 => Some("0x0fF5393387ad2f9f691FD6Fd28e07E3969e27e63"),
+        _ => None,
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ChainMode {
@@ -32,7 +42,10 @@ pub enum ChainMode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LedgerKind {
+    /// One `LedgerRecord` per line (this project's canonical shape).
     File,
+    /// JSONL of `kite-x402-hono` `SettlementReceipt` objects.
+    HonoFile,
     Http,
 }
 
@@ -203,8 +216,9 @@ impl Config {
             })?;
         }
         if let Some(value) = env("RECON_LEDGER_KIND") {
-            self.ledger.kind = LedgerKind::from_str(&value)
-                .map_err(|_| ReconError::Config("RECON_LEDGER_KIND must be file or http".into()))?;
+            self.ledger.kind = LedgerKind::from_str(&value).map_err(|_| {
+                ReconError::Config("RECON_LEDGER_KIND must be file, hono_file or http".into())
+            })?;
         }
         if let Some(value) = env("RECON_LEDGER_PATH") {
             self.ledger.path = value;
@@ -276,7 +290,7 @@ impl Config {
             }
         }
         match self.ledger.kind {
-            LedgerKind::File => {
+            LedgerKind::File | LedgerKind::HonoFile => {
                 if self.ledger.path.trim().is_empty() {
                     return Err(ReconError::Config(
                         "ledger.path is required for file ledgers".into(),
@@ -347,9 +361,27 @@ impl FromStr for LedgerKind {
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         match s.trim().to_ascii_lowercase().as_str() {
             "file" => Ok(Self::File),
+            "hono" | "hono_file" => Ok(Self::HonoFile),
             "http" => Ok(Self::Http),
             _ => Err(()),
         }
+    }
+}
+
+impl LedgerKind {
+    /// Canonical configuration spelling, used in logs and `probe --json`.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::File => "file",
+            Self::HonoFile => "hono_file",
+            Self::Http => "http",
+        }
+    }
+}
+
+impl std::fmt::Display for LedgerKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 

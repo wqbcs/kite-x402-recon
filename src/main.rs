@@ -96,7 +96,7 @@ async fn run(cli: Cli) -> ExitCode {
     tracing::info!(
         mode = mode_label(&config),
         chain_id = config.chain.chain_id,
-        ledger = %format!("{:?}", config.ledger.kind).to_lowercase(),
+        ledger = %config.ledger.kind.as_str(),
         "configuration loaded"
     );
 
@@ -146,7 +146,7 @@ async fn probe(config: &Config, chain: &dyn ChainClient, json: bool) -> ExitCode
             "token_symbol": symbol,
             "token_decimals": decimals,
             "receiver": config.reconcile.receiver,
-            "ledger": format!("{:?}", config.ledger.kind).to_lowercase(),
+            "ledger": config.ledger.kind.as_str(),
         })
         .to_string()
     } else {

@@ -18,7 +18,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use chain::{ChainClient, RpcClient};
-use config::{ChainMode, Config, LedgerKind};
+use config::{ChainMode, Config};
 use error::Result;
 use ledger::LedgerSource;
 use mock::FixtureChain;
@@ -47,10 +47,7 @@ pub fn chain_from_config(config: &Config) -> Result<Arc<dyn ChainClient + Send +
 /// Ledger source for the configured kind.
 pub fn ledger_from_config(config: &Config) -> Result<Arc<dyn LedgerSource + Send + Sync>> {
     let source = ledger::build(
-        match config.ledger.kind {
-            LedgerKind::File => LedgerKind::File,
-            LedgerKind::Http => LedgerKind::Http,
-        },
+        config.ledger.kind,
         &config.ledger.path,
         &config.ledger.url,
         config.ledger_token(),
