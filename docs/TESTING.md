@@ -28,6 +28,7 @@ cargo test
 | Mock client | block-window + receiver filtering, tx-hash validation |
 | Ledger | JSONL line numbers on parse errors, `{records:[…]}` vs array vs garbage, `kite-x402-hono` receipt normalisation (camelCase fields, ms/second timestamps, numeric amounts) |
 | Report | JSON round-trip, text/markdown mode label, exit-code matrix |
+| Capture | transfers → records, unique ids for several transfers in one transaction, JSONL round-trip, capture → scan round trip, inverted block range rejected |
 | Server | constant-time compare, bearer enforcement |
 
 ## Determinism
@@ -49,6 +50,14 @@ total=7 matched=2 pending=1 mismatched=1 failed=1 unknown=2 orphans=1 duplicates
 `fixtures/hono_receipts.jsonl` (two `kite-x402-hono` receipts → `total=2 matched=1 pending=1
 orphans=3`) and `fixtures/ledger_duplicate.jsonl` (two invoices claiming one transfer →
 `duplicates=1`) cover the newer paths.
+
+`fixtures/kite_testnet_capture.jsonl` is the one **real** fixture: two testnet transfers captured
+by `recon capture` on 2026-11-22 (public chain data, receiver is not the project's wallet). Do not
+"refresh" it casually — it is a dated observation, and `docs/EVIDENCE.md` records the block range
+it came from.
+
+`tests/cli_capture.rs` runs `capture` against the mock chain, then feeds its output back into
+`scan`, so the two commands cannot drift apart.
 
 If you edit the fixtures, update `tests/cli_scan.rs` and `tests/http_api.rs` in the same commit —
 they assert exact counts on purpose, so silent semantic drift fails CI.

@@ -9,7 +9,7 @@ checkout of `main` on 2026-11-22.
 | --- | --- | --- |
 | Format | `cargo fmt --all --check` | clean |
 | Lints | `cargo clippy --all-targets -- -D warnings` | clean |
-| Tests | `cargo test --all-targets` | 38 passed (32 unit, 3 CLI, 3 HTTP), 0 failed |
+| Tests | `cargo test --all-targets` | 43 passed (35 unit, 2 capture CLI, 3 scan CLI, 3 HTTP), 0 failed |
 | Docs | `cargo doc --no-deps` | no warnings |
 | CI | GitHub Actions `CI` on push `418a69c` | #3 completed successfully (2m 2s): fmt+clippy+test on ubuntu-latest ✅, windows-latest ✅, rustdoc ✅ |
 
@@ -79,6 +79,47 @@ UNKNOWN  inv_second … tx=0x1111… :: transaction hash already claimed by reco
 
 Orphans are the mirror case (money without an invoice). Duplicate claims are invoices competing for
 the same money — the failure mode that makes a naive "sum matched amounts" reconciliation overcount.
+
+## Real transfers, captured and reconciled against Kite testnet
+
+This is the run that makes the tool more than a fixture demo. On 2026-11-22 at tip `22045329`,
+`capture` read real `Transfer` logs of the testnet payment token for one address, then `scan`
+reconciled the captured file against the same chain:
+
+```bash
+RECON_CHAIN_MODE=live \
+RECON_TOKEN_ADDRESS=0x0fF5393387ad2f9f691FD6Fd28e07E3969e27e63 \
+recon --config recon.example.toml capture \
+  --from-block 22045179 --to-block 22045329 \
+  --receiver 0x66336f24e38b5b155cd3b50f635b1bb0f1098b1d \
+  --out fixtures/kite_testnet_capture.jsonl
+# mode=live chain_id=2368 blocks=22045179..22045329 receiver=0x6633…8b1d records=2 out=…
+```
+
+```bash
+RECON_CHAIN_MODE=live RECON_RECEIVER=0x6633…8b1d \
+RECON_LEDGER_PATH=fixtures/kite_testnet_capture.jsonl \
+recon --config recon.example.toml scan --format text
+```
+
+```
+mode=live chain_id=2368 tip=22045329 window=60m generated_at=2026-11-22T16:33:21Z
+total=2 matched=2 pending=0 mismatched=0 failed=0 unknown=0 orphans=14 duplicates=0
+MATCHED 0x13a25fa7…fd39e amount=2000000000000000000 :: confirmed at block 22045327
+MATCHED 0x71ddfc73…2a8482 amount=2000000000000000000 :: confirmed at block 22045198
+ORPHAN block=22045168 tx=0x06da7657… gate: 14 more transfers arrived in the 60-minute window
+        outside the 150-block capture range
+```
+
+What this shows, honestly:
+
+- Both captured records are **real testnet settlements** verified through real receipts; the
+  amounts are `2e18` atomic units, consistent with `decimals() = 18` read from the contract.
+- The 14 orphans are not a bug: transfers settled inside the audit window but outside the capture
+  range. That is exactly the "money arrived, ledger has no record" case the tool exists to surface.
+- `fixtures/kite_testnet_capture.jsonl` ships those two real records (public chain data). The
+  receiver is an address observed on testnet, **not** this project's own wallet, so no private
+  data or ownership claim is involved.
 
 ## Live probe against Kite testnet
 

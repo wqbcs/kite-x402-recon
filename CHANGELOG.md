@@ -7,6 +7,11 @@ All notable changes to this project are documented here. Format follows
 
 ### Added
 
+- `recon capture`: writes a `ledger.kind = "file"` JSONL from the token transfers a block range
+  contains (`--from-block`, `--to-block`, `--receiver`, `--out`), so a missing gateway ledger can
+  be rebuilt from the chain and then audited by `scan`. One transaction emitting several
+  transfers gets unique ids (`hash`, `hash#2`, …). Records carry the capture time, not the
+  settlement time.
 - `ledger.kind = "hono_file"` (alias `hono`): consumes a `kite-x402-hono` `SettlementReceipt`
   JSONL dump (camelCase fields, second or millisecond `timestamp`) and verifies each receipt on
   chain instead of trusting its `success` flag. Fixture: `fixtures/hono_receipts.jsonl`.

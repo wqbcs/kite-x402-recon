@@ -95,6 +95,32 @@ curl -s -H "Authorization: Bearer change-me" localhost:8081/api/v1/reconcile | j
 
 Stops on Ctrl-C / SIGTERM with a graceful shutdown.
 
+## `recon capture`
+
+Writes a ledger file from the token transfers a block range contains. Use it when there is no
+gateway ledger to audit (or it was lost), or to seed a regression fixture from real settlements.
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `--from-block <n>` | `to_block - search_lookback_blocks` | First block, inclusive. |
+| `--to-block <n>` | current tip | Last block, inclusive. |
+| `--receiver <addr>` | `reconcile.receiver` | Keep only transfers paid to this address. |
+| `--out <path>` | required | JSONL destination; stdout only carries the one-line summary. |
+
+```bash
+recon --config recon.toml capture --from-block 22045179 --to-block 22045329 \
+  --receiver 0x66336f24e38b5b155cd3b50f635b1bb0f1098b1d --out captured.jsonl
+# mode=live chain_id=2368 blocks=22045179..22045329 receiver=0x6633…8b1d records=2 out=captured.jsonl
+```
+
+- `observed_at` is the capture time, not the settlement time; `tx_hash` ties the record to the
+  transfer. This is documented in the README and in `src/capture.rs`.
+- The written file is exactly `ledger.kind = "file"` input, so `scan` accepts it unchanged.
+- A block range greater than `reconcile.max_records` is capped by that limit, and capture exits
+  `0` even when zero transfers were found (an empty receiver is a valid answer).
+- Exit codes: `78` bad block range / receiver / missing token address, `69` RPC failure, `73`
+  cannot write the file.
+
 ## Exit codes
 
 | Code | Meaning |

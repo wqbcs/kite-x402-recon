@@ -37,28 +37,42 @@
 
 ```
 src/
-  main.rs        CLI (clap): probe / scan / serve, logging to stderr
+  main.rs        CLI (clap): probe / scan / capture / serve, logging to stderr
   lib.rs         module wiring + config → (chain, ledger, reconciler) builders
   model.rs       domain types + parsing helpers
   error.rs       ReconError taxonomy (no panics on untrusted input)
   config.rs      TOML + RECON_* env overrides + validation
   chain.rs       ChainClient trait, RpcClient (JSON-RPC), decoding helpers
   mock.rs        FixtureChain from fixtures/chain_mock.json
+  capture.rs     Chain → ledger bootstrap: transfers become ledger records
   ledger.rs      LedgerSource trait, FileLedger (JSONL), HonoReceiptFile
                  (kite-x402-hono SettlementReceipt export), HttpLedger, MemoryLedger
   reconcile.rs   Reconciler: per-record judgement, duplicate-claim detection, orphan detection
   report.rs      text / json / markdown rendering + exit codes
   server.rs      axum router, bearer auth, AppState
 fixtures/
-  ledger.jsonl      one record per outcome, synthetic
-  chain_mock.json   matching receipts and transfers
+  ledger.jsonl                 one record per outcome, synthetic
+  chain_mock.json              matching receipts and transfers, synthetic
+  hono_receipts.jsonl          gateway receipt dump, synthetic
+  ledger_duplicate.jsonl       two invoices claiming one transfer, synthetic
+  kite_testnet_capture.jsonl   two real testnet transfers, captured 2026-11-22
 tests/
   cli_scan.rs       black-box CLI runs against fixtures (JSON, strict exit codes)
+  cli_capture.rs    black-box capture → scan round trip
   http_api.rs       router tests: health, auth, report shape
 docs/
 ```
 
 ## Key flows
+
+### `capture`
+
+1. `chain.tip()` once (unless `--to-block` was given) and derive the range.
+2. `find_transfers` for the configured token and receiver over that range; the RPC filter is
+   already narrowed to the receiver so unrelated volume never enters the process twice.
+3. `capture::ledger_from_transfers` maps each transfer to a `LedgerRecord` with the lowercased
+   tx hash as id (`#2`, `#3` suffixes when one transaction emits several transfers).
+4. Write JSONL; nothing is signed, nothing is retried.
 
 ### `scan`
 

@@ -32,6 +32,7 @@ re-submitting settlements, no writing to a chain.
 | --- | --- |
 | `recon probe` | Verify RPC reachability, chain id, tip and token metadata (symbol/decimals). |
 | `recon scan` | Reconcile one ledger batch against the chain window; render `text`, `json` or `markdown`. |
+| `recon capture` | Rebuild a ledger file from the token transfers a block range contains (recovery path). |
 | `recon serve` | Expose the same report over a small read-only HTTP API (`/healthz`, `/api/v1/reconcile`). |
 
 Per record outcome:
@@ -89,6 +90,11 @@ matched with `"recovered_by": "log_search"`, or as pending if several candidates
 - **Reference-gateway receipts**: `ledger.kind = "hono_file"` consumes `kite-x402-hono`'s
   `SettlementReceipt` export and verifies it against the chain instead of trusting its `success`
   field.
+- **Verifiable interaction (not just config)**: `recon capture` read real `Transfer` logs on
+  Kite testnet at tip `22045329`, wrote them to
+  [`fixtures/kite_testnet_capture.jsonl`](fixtures/kite_testnet_capture.jsonl), and `scan` then
+  matched both records against real receipts — see the run in
+  [`docs/EVIDENCE.md`](docs/EVIDENCE.md). No mock data, no mocked RPC.
 - **Ecosystem fit**: reconciles the settlement records produced by the x402 gateway flow used by
   `kite-x402-axum` and the other reference projects. The report shape is designed to be consumed
   next to a gateway's own ledger export — see [`fixtures/ledger.jsonl`](fixtures/ledger.jsonl) for
@@ -127,6 +133,30 @@ The bundled fixtures intentionally contain one record of each outcome, so the su
 `total=7 matched=2 pending=1 mismatched=1 failed=1 unknown=2 orphans=1 duplicates=0`. Mock mode is
 labelled in every output (`mode=mock`) and `scan` prints a note — a fixture run can never be
 mistaken for on-chain evidence.
+
+## Capture a ledger from the chain (recovery path)
+
+When the gateway's ledger is missing, the chain is the surviving witness. `recon capture` reads the
+token's `Transfer` logs over a block range and writes a normal ledger file:
+
+```bash
+RECON_CHAIN_MODE=live \
+RECON_TOKEN_ADDRESS=0x0fF5393387ad2f9f691FD6Fd28e07E3969e27e63 \
+recon --config recon.example.toml capture \
+  --from-block 22045179 --to-block 22045329 \
+  --receiver 0x…  --out captured.jsonl
+# mode=live chain_id=2368 blocks=22045179..22045329 receiver=0x… records=2 out=captured.jsonl
+```
+
+Then audit it exactly like a gateway ledger (`RECON_LEDGER_PATH=captured.jsonl recon scan`). Two
+things to know:
+
+- `observed_at` in captured records is the **capture time**, not the settlement time: `eth_getLogs`
+  has no wall clock, and asking per block would double the RPC calls. The `tx_hash` is the link to
+  the real settlement moment.
+- Capture narrows the block range; `scan` searches the `window_minutes` window. A transfer that
+  settled inside the audit window but outside your capture range shows up as an `orphan` — that is
+  not a false positive, it is money your ledger never recorded.
 
 ## Configuration
 
@@ -229,17 +259,17 @@ cargo fmt --check
 ```
 
 Coverage: amount and timestamp parsing, config validation, topic/hex/ABI decoding, all five
-outcomes, log-search recovery, orphan detection, stale records, bearer auth, JSON shape, exit
-codes. See [`docs/TESTING.md`](docs/TESTING.md) and the recorded runs in
+outcomes, log-search recovery, orphan detection, duplicate claims, stale records, `kite-x402-hono`
+receipt normalisation, `capture → scan` round trip, bearer auth, JSON shape, exit codes. See
+[`docs/TESTING.md`](docs/TESTING.md) and the recorded runs in
 [`docs/EVIDENCE.md`](docs/EVIDENCE.md).
 
 ## Known limitations
 
 - **Read-only by design**: no key handling, no settlement retry, no state storage.
 - **No UI**: JSON/text/markdown only. The HTTP API is for dashboards and probes, not a console.
-- **Gateway adapters are thin**: the file JSONL and the generic HTTP endpoint are implemented; a
-  dedicated adapter for a specific gateway's internal store is not. The HTTP source expects the
-  documented shape.
+- **Gateway adapters are thin**: the file JSONL, the `kite-x402-hono` receipt dump and the generic
+  HTTP endpoint are implemented; no other gateway's private store shape is supported yet.
 - **Log search is block-window based**, not timestamp-optimised: a very old record needs a larger
   `search_lookback_blocks` (bounded to 200 000) and a provider that allows that range for `eth_getLogs`.
 - **No websocket subscriptions**: reconciliation is pull-based (`scan` or polling `serve`).
@@ -247,7 +277,12 @@ codes. See [`docs/TESTING.md`](docs/TESTING.md) and the recorded runs in
   set `chain.token_decimals` explicitly.
 - **Mainnet is untested by this repo's CI**: mainnet parameters are presets only; verify the token
   contract yourself before pointing it at production.
-- Fixtures are synthetic; they are not recorded mainnet/testnet data.
+- **Fixture provenance is mixed and labelled**: `ledger.jsonl`, `chain_mock.json`,
+  `hono_receipts.jsonl` and `ledger_duplicate.jsonl` are synthetic; `kite_testnet_capture.jsonl`
+  is two real testnet transfers captured 2026-11-22 (public data, reused address, not this
+  project's wallet).
+- **`capture` is not a settlement service**: it never signs, never retries, and its `observed_at`
+  is capture time, not payment time.
 
 ## License
 
