@@ -4,6 +4,7 @@
 //! source, build a reconciler, then call [`Reconciler::report`]. The CLI and the
 //! HTTP server are thin shells around exactly that.
 
+pub mod capture;
 pub mod chain;
 pub mod config;
 pub mod error;

@@ -5,12 +5,12 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand, ValueEnum};
-use kite_x402_recon::chain::ChainClient;
+use kite_x402_recon::chain::{ChainClient, TransferQuery};
 use kite_x402_recon::config::Config;
 use kite_x402_recon::model::{format_unix, now_unix};
 use kite_x402_recon::server::{router, AppState};
 use kite_x402_recon::{
-    chain_from_config, ledger_from_config, mode_label, reconciler_from_config, report,
+    capture, chain_from_config, ledger_from_config, mode_label, reconciler_from_config, report,
 };
 use tracing_subscriber::EnvFilter;
 
@@ -46,6 +46,21 @@ enum Command {
         /// Also write the rendered report to this path.
         #[arg(long)]
         out: Option<PathBuf>,
+    },
+    /// Write a ledger file from the token transfers a block range contains.
+    Capture {
+        /// First block, inclusive. Defaults to `to_block - search_lookback_blocks`.
+        #[arg(long)]
+        from_block: Option<u64>,
+        /// Last block, inclusive. Defaults to the current tip.
+        #[arg(long)]
+        to_block: Option<u64>,
+        /// Only keep transfers paid to this address. Defaults to the configured receiver.
+        #[arg(long)]
+        receiver: Option<String>,
+        /// Destination JSONL file (required, so log output stays unattended).
+        #[arg(long)]
+        out: PathBuf,
     },
     /// Serve the read-only HTTP API.
     Serve {
@@ -115,6 +130,22 @@ async fn run(cli: Cli) -> ExitCode {
             strict,
             out,
         } => scan(&config, chain, format, strict, out.as_deref()).await,
+        Command::Capture {
+            from_block,
+            to_block,
+            receiver,
+            out,
+        } => {
+            capture_ledger(
+                &config,
+                chain.as_ref(),
+                from_block,
+                to_block,
+                receiver,
+                &out,
+            )
+            .await
+        }
         Command::Serve { bind } => serve(&config, chain, bind).await,
     }
 }
@@ -230,6 +261,92 @@ async fn scan(
         "scan finished"
     );
     ExitCode::from(u8::try_from(code).unwrap_or(1))
+}
+
+/// `recon capture`: write a ledger file from token transfers in a block range.
+///
+/// This is the recovery path: when the gateway's ledger is missing and the
+/// chain is the only witness, capture what the chain already settled, then scan
+/// it like any other batch.
+async fn capture_ledger(
+    config: &Config,
+    chain: &dyn ChainClient,
+    from_block: Option<u64>,
+    to_block: Option<u64>,
+    receiver: Option<String>,
+    out: &std::path::Path,
+) -> ExitCode {
+    let tip = match chain.tip().await {
+        Ok(tip) => tip,
+        Err(e) => {
+            tracing::error!("chain probe failed: {e}");
+            return ExitCode::from(69);
+        }
+    };
+    let to_block = to_block.unwrap_or(tip);
+    let lookback = config.reconcile.search_lookback_blocks.max(1);
+    let from_block = from_block.unwrap_or_else(|| to_block.saturating_sub(lookback));
+    if from_block > to_block {
+        tracing::error!("from_block {from_block} is above to_block {to_block}");
+        return ExitCode::from(78);
+    }
+    let receiver = receiver.unwrap_or_else(|| config.reconcile.receiver.clone());
+    if let Err(e) = kite_x402_recon::config::validate_address("receiver", &receiver) {
+        tracing::error!("{e}");
+        return ExitCode::from(78);
+    }
+    if config.chain.token_address.trim().is_empty() {
+        tracing::error!("chain.token_address is empty; capture only reads token transfers");
+        return ExitCode::from(78);
+    }
+
+    let query = TransferQuery {
+        token: config.chain.token_address.clone(),
+        from: None,
+        to: receiver.clone(),
+        from_block,
+        to_block,
+        limit: config.reconcile.max_records,
+    };
+    let transfers = match chain.find_transfers(query).await {
+        Ok(transfers) => transfers,
+        Err(e) => {
+            tracing::error!("cannot read transfers: {e}");
+            return ExitCode::from(69);
+        }
+    };
+    let records = capture::ledger_from_transfers(&transfers, &format_unix(now_unix()));
+    let jsonl = match capture::to_jsonl(&records) {
+        Ok(jsonl) => jsonl,
+        Err(e) => {
+            tracing::error!("cannot serialise captured ledger: {e}");
+            return ExitCode::from(70);
+        }
+    };
+    if let Err(e) = std::fs::write(out, jsonl) {
+        tracing::error!("cannot write {}: {e}", out.display());
+        return ExitCode::from(73);
+    }
+    let line = format!(
+        "mode={} chain_id={} blocks={from_block}..{to_block} receiver={receiver} records={} out={}\n",
+        mode_label(config),
+        config.chain.chain_id,
+        records.len(),
+        out.display()
+    );
+    if let Err(e) = write_stdout(&line) {
+        tracing::error!("cannot write to stdout: {e}");
+        return ExitCode::from(74);
+    }
+    tracing::info!(
+        records = records.len(),
+        path = %out.display(),
+        from_block,
+        to_block,
+        receiver = %receiver,
+        "ledger captured"
+    );
+    ExitCode::SUCCESS
 }
 
 async fn serve(
