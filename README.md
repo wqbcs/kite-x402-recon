@@ -162,7 +162,8 @@ cargo fmt --check
 
 Coverage: amount and timestamp parsing, config validation, topic/hex/ABI decoding, all five
 outcomes, log-search recovery, orphan detection, stale records, bearer auth, JSON shape, exit
-codes. See [`docs/TESTING.md`](docs/TESTING.md).
+codes. See [`docs/TESTING.md`](docs/TESTING.md) and the recorded runs in
+[`docs/EVIDENCE.md`](docs/EVIDENCE.md).
 
 ## Known limitations
 
