@@ -70,6 +70,17 @@ RECON_LEDGER_URL=https://gateway.example.com/settlements \
 recon scan --format json
 ```
 
+`RECON_LEDGER_KIND` accepts `file`, `hono_file`/`hono` (a `kite-x402-hono` `SettlementReceipt`
+JSONL dump) and `http`. Both file-backed kinds use `RECON_LEDGER_PATH`; `hono_file` ignores the
+gateway's `success` flag and verifies each hash on chain.
+
+```bash
+RECON_LEDGER_KIND=hono_file \
+RECON_LEDGER_PATH=fixtures/hono_receipts.jsonl \
+RECON_CHAIN_MODE=mock \
+recon --config recon.example.toml scan
+```
+
 ## `recon serve`
 
 | Option | Meaning |

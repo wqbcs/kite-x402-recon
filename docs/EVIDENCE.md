@@ -9,7 +9,7 @@ checkout of `main` on 2026-11-22.
 | --- | --- | --- |
 | Format | `cargo fmt --all --check` | clean |
 | Lints | `cargo clippy --all-targets -- -D warnings` | clean |
-| Tests | `cargo test --all-targets` | 36 passed (30 unit, 3 CLI, 3 HTTP), 0 failed |
+| Tests | `cargo test --all-targets` | 38 passed (32 unit, 3 CLI, 3 HTTP), 0 failed |
 | Docs | `cargo doc --no-deps` | no warnings |
 | CI | GitHub Actions `CI` on push `f30ed70` | fmt+clippy+test on ubuntu-latest ✅, windows-latest ✅, rustdoc ✅ |
 
@@ -23,7 +23,7 @@ cargo run -- --config recon.example.toml scan
 
 ```
 mode=mock chain_id=2368 tip=1000 window=60m generated_at=2026-11-22T15:37:52Z
-total=7 matched=2 pending=1 mismatched=1 failed=1 unknown=2 orphans=1
+total=7 matched=2 pending=1 mismatched=1 failed=1 unknown=2 orphans=1 duplicates=0
 note: mock mode reads fixtures/chain_mock.json; nothing here came from a chain
 MATCHED    inv_ok     … amount=10000 tx=0x1111… :: transfer of 10000 atomic units confirmed at block 990
 MATCHED    inv_search … amount=10000 tx=0x2222… :: matched by log search (no tx hash in the ledger record)
@@ -38,25 +38,70 @@ ORPHAN     block=999 tx=0x6666… from=0x9999… to=0x2222… amount=25000
 Exit code `1` — differences exist, as the report says. `scan --strict` also exits `2` when only
 pending records remain (asserted in `tests/cli_scan.rs`).
 
+## Consuming a `kite-x402-hono` receipt dump
+
+The reference gateway's `SettlementReconciler` keeps receipts in memory and never reads the chain
+(`refs/kite-x402-hono/src/settlement-reconciler.ts`), so its `success` flag is only a claim. Our
+`hono_file` source reads that export and re-verifies every hash:
+
+```bash
+RECON_LEDGER_KIND=hono_file RECON_LEDGER_PATH=fixtures/hono_receipts.jsonl \
+RECON_CHAIN_MODE=mock recon --config recon.example.toml scan
+```
+
+```
+mode=mock chain_id=2368 tip=1000 window=60m generated_at=2026-11-22T16:15:10Z
+total=2 matched=1 pending=1 mismatched=0 failed=0 unknown=0 orphans=3 duplicates=0
+MATCHED  0x1111… 0x2222… amount=10000 tx=0x1111… :: transfer of 10000 atomic units confirmed at block 990
+PENDING  0x5555… 0x2222… amount=3000  tx=0x5555… :: no receipt yet; the gateway may have submitted it very recently
+ORPHAN   block=995 tx=0x2222… from=0x5555… to=0x2222… amount=10000
+ORPHAN   block=995 tx=0x3333… from=0x4444… to=0x2222… amount=5000
+ORPHAN   block=999 tx=0x6666… from=0x9999… to=0x2222… amount=25000
+```
+
+Note the second receipt: the gateway recorded `success=false`, the chain shows no receipt yet, and
+the tool reports `pending` — it follows the chain, not the claim.
+
+## Duplicate claims (one transfer, two invoices)
+
+```bash
+RECON_LEDGER_PATH=fixtures/ledger_duplicate.jsonl RECON_CHAIN_MODE=mock \
+recon --config recon.example.toml scan
+```
+
+```
+total=2 matched=1 pending=0 mismatched=0 failed=0 unknown=1 orphans=3 duplicates=1
+MATCHED  inv_first  … tx=0x1111… :: transfer of 10000 atomic units confirmed at block 990
+UNKNOWN  inv_second … tx=0x1111… :: transaction hash already claimed by record inv_first; one transfer cannot pay two invoices
+```
+
+Orphans are the mirror case (money without an invoice). Duplicate claims are invoices competing for
+the same money — the failure mode that makes a naive "sum matched amounts" reconciliation overcount.
+
 ## Live probe against Kite testnet
 
 ```bash
 RECON_CHAIN_MODE=live \
-RECON_TOKEN_ADDRESS=0x3Fdd283C4c43A60398bf93CA01a8a8BD773a755b \
+RECON_TOKEN_ADDRESS=0x0fF5393387ad2f9f691FD6Fd28e07E3969e27e63 \
 recon --config recon.example.toml probe --json
 ```
 
 ```json
-{"chain_id":2368,"mode":"live","rpc_url":"https://rpc-testnet.gokite.ai/",
- "tip":22045327,"tip_time":"2026-11-22T15:36:49Z",
- "token_address":"0x3Fdd283C4c43A60398bf93CA01a8a8BD773a755b",
- "token_symbol":"unknown","token_decimals":6}
+{"chain_id":2368,"ledger":"file","mode":"live",
+ "receiver":"0x2222222222222222222222222222222222222222",
+ "rpc_url":"https://rpc-testnet.gokite.ai/","tip":22045328,"tip_time":"2026-11-22T16:17:54Z",
+ "token_address":"0x0fF5393387ad2f9f691FD6Fd28e07E3969e27e63",
+ "token_decimals":18,"token_symbol":"USDT"}
 ```
 
-- The RPC path works end to end: `eth_blockNumber` returned tip `22045327`.
-- `token_symbol` came back empty: the `symbol()` call against that address returned data shorter
-  than the ABI `string` envelope. The tool logs a warning and keeps `token_symbol` informational;
-  `chain.token_decimals` in the config remains authoritative. This is exactly why the token
+- The RPC path works end to end: `eth_blockNumber` returned tip `22045328`.
+- The testnet payment token answers `symbol() = USDT` and `decimals() = 18` — **not** the 6 used by
+  the fixture. `token_decimals` in the report comes from the chain; the TOML value is only a
+  fallback when `decimals()` cannot be read, and amounts in reports stay in atomic units.
+- The address above is the one named in the Kite Service Provider Guide
+  (<https://docs.gokite.ai/kite-agent-passport/service-provider-guide>). An earlier run against
+  `0x3Fdd283C4c43A60398bf93CA01a8a8BD773a755b` returned an empty `symbol()` (data shorter than the
+  ABI `string` envelope); the tool logged a warning instead of failing, which is why the token
   contract is never baked into the binary.
 
 ## Test surface

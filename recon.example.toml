@@ -8,17 +8,22 @@
 mode = "mock"
 rpc_url = "https://rpc-testnet.gokite.ai/"
 chain_id = 2368
-# Settlement token contract. The value below is a placeholder for the bundled
-# fixture; for a real deployment copy the official contract from
-# https://docs.gokite.ai and verify it on https://testnet.kitescan.ai.
+# Settlement token contract. This placeholder belongs to the bundled fixture.
+# For a real deployment use the Kite testnet payment token documented in the
+# Service Provider Guide,
+# https://docs.gokite.ai/kite-agent-passport/service-provider-guide,
+# currently 0x0fF5393387ad2f9f691FD6Fd28e07E3969e27e63, and verify it on
+# https://testnet.kitescan.ai before trusting it.
 token_address = "0x3333333333333333333333333333333333333333"
+# Fallback only; `probe` asks the contract for decimals() when it can.
 token_decimals = 6
 # Blocks that must be buried before a payment is treated as final.
 min_confirmations = 1
 timeout_ms = 15000
 
 [ledger]
-# "file" reads JSONL, "http" reads {"records":[...]} from a gateway endpoint.
+# "file" reads JSONL, "hono_file" reads a kite-x402-hono SettlementReceipt
+# dump, "http" reads {"records":[...]} from a gateway endpoint.
 kind = "file"
 path = "fixtures/ledger.jsonl"
 url = ""

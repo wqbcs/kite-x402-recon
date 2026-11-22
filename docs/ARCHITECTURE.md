@@ -19,7 +19,8 @@
           ▼                   ▼
    ledger::LedgerSource   chain::ChainClient
    (FileLedger,           (RpcClient,
-    HttpLedger,            mock::FixtureChain)
+    HonoReceiptFile,       mock::FixtureChain)
+    HttpLedger,
     MemoryLedger)
 ```
 
@@ -43,8 +44,9 @@ src/
   config.rs      TOML + RECON_* env overrides + validation
   chain.rs       ChainClient trait, RpcClient (JSON-RPC), decoding helpers
   mock.rs        FixtureChain from fixtures/chain_mock.json
-  ledger.rs      LedgerSource trait, FileLedger (JSONL), HttpLedger, MemoryLedger
-  reconcile.rs   Reconciler: per-record judgement + orphan detection
+  ledger.rs      LedgerSource trait, FileLedger (JSONL), HonoReceiptFile
+                 (kite-x402-hono SettlementReceipt export), HttpLedger, MemoryLedger
+  reconcile.rs   Reconciler: per-record judgement, duplicate-claim detection, orphan detection
   report.rs      text / json / markdown rendering + exit codes
   server.rs      axum router, bearer auth, AppState
 fixtures/
@@ -72,9 +74,11 @@ docs/
    - without `tx_hash`: search `Transfer` logs in `search_lookback_blocks`.
 6. Logs are filtered by `to == receiver` and, when the record has a payer, `from == payer`.
    A transfer of `amount ≥ expected` marks the record; confirmations = `tip - block + 1`.
-7. Orphans: transfers to the receiver in the same window not claimed by any record's tx hash,
+7. Duplicate claims: a tx hash already claimed by an earlier record makes the later record
+   `unknown` (one transfer cannot pay two invoices); `summary.duplicates` counts them.
+8. Orphans: transfers to the receiver in the same window not claimed by any record's tx hash,
    capped at 50.
-8. Render, emit exit code, optionally write `--out`.
+9. Render, emit exit code, optionally write `--out`.
 
 ### `serve`
 

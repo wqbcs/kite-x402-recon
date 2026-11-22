@@ -50,7 +50,7 @@ Success: `200 OK`, `Content-Type: application/json`,
   "chain_tip": 1000,
   "summary": {
     "total": 7, "matched": 2, "pending": 1, "mismatched": 1,
-    "failed": 1, "unknown": 2, "orphans": 1
+    "failed": 1, "unknown": 2, "orphans": 1, "duplicates": 0
   },
   "records": [
     {
@@ -84,6 +84,8 @@ Field notes:
 - `recovered_by` appears only when the log-search path produced the match (`"log_search"`).
 - `tx_hash`, `payer`, `block_number`, `confirmations` are omitted when not applicable.
 - `summary.orphans` equals `orphans.length`.
+- `summary.duplicates` counts records rejected because their `tx_hash` was already claimed by an
+  earlier record; those records are counted inside `summary.unknown`.
 
 ## Errors
 

@@ -5,11 +5,24 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+### Added
+
+- `ledger.kind = "hono_file"` (alias `hono`): consumes a `kite-x402-hono` `SettlementReceipt`
+  JSONL dump (camelCase fields, second or millisecond `timestamp`) and verifies each receipt on
+  chain instead of trusting its `success` flag. Fixture: `fixtures/hono_receipts.jsonl`.
+- Duplicate-claim detection: when two ledger records point at the same `tx_hash`, the later record
+  is reported `unknown` with a reason naming the first claim, and `summary.duplicates` counts it.
+- `LedgerKind::as_str` / `Display` so logs and `probe --json` print `hono_file` rather than a
+  derived debug name.
+- Testnet payment-token guidance updated to the Kite Service Provider Guide address
+  `0x0fF5393387ad2f9f691FD6Fd28e07E3969e27e63`; the fixture placeholder in
+  `recon.example.toml` is unchanged and explained inline.
+
 ### Planned
 
-- A gateway-specific ledger adapter (beyond generic JSONL/HTTP).
 - Block-timestamp binary search to replace the fixed `search_lookback_blocks` window.
 - Prometheus text exposition for `mismatched`/`pending` gauges.
+- Optional CSV ledger source.
 
 ## [0.1.0] - 2026-11-22
 

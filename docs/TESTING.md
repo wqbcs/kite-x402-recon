@@ -24,9 +24,9 @@ cargo test
 | Timestamps | RFC 3339 round-trip, invalid input |
 | Config | live needs token address + http RPC, receiver address required in every mode, window/max-records/lookback bounds, http ledger needs URL, address shape |
 | Chain decoding | `Transfer` topic → address, ABI `string` (symbol), hex numbers, decimals mismatch |
-| Reconciliation | matched, reverted → failed, short payment → mismatched, too few confirmations → pending, no receipt → pending, missing hash recovered by log search, ambiguous/absent candidates, orphans, wrong receiver → unknown, bad amount → unknown, stale record in live mode → unknown |
+| Reconciliation | matched, reverted → failed, short payment → mismatched, too few confirmations → pending, no receipt → pending, missing hash recovered by log search, ambiguous/absent candidates, orphans, wrong receiver → unknown, bad amount → unknown, stale record in live mode → unknown, duplicate claim → second record unknown + `duplicates` |
 | Mock client | block-window + receiver filtering, tx-hash validation |
-| Ledger | JSONL line numbers on parse errors, `{records:[…]}` vs array vs garbage |
+| Ledger | JSONL line numbers on parse errors, `{records:[…]}` vs array vs garbage, `kite-x402-hono` receipt normalisation (camelCase fields, ms/second timestamps, numeric amounts) |
 | Report | JSON round-trip, text/markdown mode label, exit-code matrix |
 | Server | constant-time compare, bearer enforcement |
 
@@ -43,8 +43,12 @@ cargo test
 one record per outcome plus an orphan. Expected summary:
 
 ```
-total=7 matched=2 pending=1 mismatched=1 failed=1 unknown=2 orphans=1
+total=7 matched=2 pending=1 mismatched=1 failed=1 unknown=2 orphans=1 duplicates=0
 ```
+
+`fixtures/hono_receipts.jsonl` (two `kite-x402-hono` receipts → `total=2 matched=1 pending=1
+orphans=3`) and `fixtures/ledger_duplicate.jsonl` (two invoices claiming one transfer →
+`duplicates=1`) cover the newer paths.
 
 If you edit the fixtures, update `tests/cli_scan.rs` and `tests/http_api.rs` in the same commit —
 they assert exact counts on purpose, so silent semantic drift fails CI.

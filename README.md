@@ -7,7 +7,7 @@ and a chain window — and it tells you, per record, whether the money actually 
 ```
 $ recon --config recon.example.toml scan
 mode=mock chain_id=2368 tip=1000 window=60m generated_at=...
-total=7 matched=2 pending=1 mismatched=1 failed=1 unknown=2 orphans=1
+total=7 matched=2 pending=1 mismatched=1 failed=1 unknown=2 orphans=1 duplicates=0
 MATCHED    inv_ok 0x2222…2222 amount=10000 tx=0x1111…1111 :: transfer of 10000 atomic units confirmed at block 990
 PENDING    inv_pending 0x2222…2222 amount=3000 tx=0x5555…5555 :: no receipt yet; …
 ORPHAN     block=999 tx=0x6666…6666 from=0x9999…9999 to=0x2222…2222 amount=25000
@@ -47,6 +47,30 @@ Per record outcome:
 Plus **orphans**: transfers to your receiver in the window that no ledger record claims — the
 classic "money arrived but the gateway lost the invoice" case.
 
+And **duplicate claims**: two ledger records pointing at the same transaction hash. One transfer
+cannot pay two invoices; the second record is reported as `unknown` with a reason naming the first
+claim, and `summary.duplicates` counts it.
+
+## How this differs from what already exists
+
+Verified against the ecosystem as of 2026-11-22, so the claim is honest rather than promotional:
+
+| Existing thing | What it does | What it does **not** do |
+| --- | --- | --- |
+| `kite-x402-hono` `SettlementReconciler` (the reference gateway) | Stores facilitator-reported receipts in memory: `txHash`, `payer`, `payTo`, `amount`, `success` | Never reads the chain. Its name is about bookkeeping; `success` is whatever the facilitator said. Our `hono_file` source consumes exactly that export and verifies each receipt on-chain. |
+| Block explorer (kitescan) | Lets a human look up one transaction | Cannot answer "which of my 500 invoices did not land", cannot map a transfer back to an invoice id, and has no batch/CI story. |
+| [x402trace](https://github.com/fardinvahdat/x402trace) (Base Sepolia, Apache-2.0) | Inline proxy that joins facilitator-rejected requests to USDC transfers by `(payer, payee, value, nonce)` | Requires sitting in the request path, is Base/USDC/EIP-3009-specific, has no ledger-file mode, no orphan detection, no confirmation policy, no CI gate, no HTTP API. |
+| piero `x402` facilitators `/verify`, `/settle` | Decide whether to accept or execute a payment | Say nothing after the fact when a settle times out or the gateway goes down mid-request. |
+| [hiero-x402](https://github.com/hiero-hackers/hiero-x402) | Independent settlement check + receipt on Hedera | Hedera-only, per-payment receipts for agents, not a batch auditor of an existing ledger. |
+
+So: the *idea* of post-settlement verification is not novel, and this project does not claim it is.
+The narrow gap it fills is a **batch, offline, ledger-fed audit for Kite**: you already have a
+ledger export (in our format or `kite-x402-hono`'s receipt dump), you do not want a proxy in the
+payment path, and you want per-invoice adjudication, orphan money, duplicate claims and a CI exit
+code. If you run Base and only need inline capture, use `x402trace`; if you need Hedera receipts,
+use `hiero-x402`. Related-work comparison lives in this README so reviewers can check the delta
+themselves.
+
 When a ledger record has no `tx_hash`, the reconciler searches ERC-20 `Transfer` logs for
 `(payer, payTo, amount ≥ expected)` inside `search_lookback_blocks` and reports the record as
 matched with `"recovered_by": "log_search"`, or as pending if several candidates are ambiguous.
@@ -57,6 +81,14 @@ matched with `"recovered_by": "log_search"`, or as pending if several candidates
   (`2366`) presets; every RPC call is plain JSON-RPC (`eth_blockNumber`,
   `eth_getTransactionReceipt`, `eth_getLogs`, `eth_call`) implemented in
   [`src/chain.rs`](src/chain.rs).
+- **Testnet payment token preset**: `0x0fF5393387ad2f9f691FD6Fd28e07E3969e27e63` from the Kite
+  Service Provider Guide (<https://docs.gokite.ai/kite-agent-passport/service-provider-guide>).
+  `probe` against it on 2026-11-22 returned `symbol() = USDT`, `decimals() = 18`; reports keep
+  atomic units and take decimals from the chain, so `chain.token_decimals` is only a fallback.
+  Re-verify on <https://testnet.kitescan.ai/> before trusting it; mainnet has no baked-in token.
+- **Reference-gateway receipts**: `ledger.kind = "hono_file"` consumes `kite-x402-hono`'s
+  `SettlementReceipt` export and verifies it against the chain instead of trusting its `success`
+  field.
 - **Ecosystem fit**: reconciles the settlement records produced by the x402 gateway flow used by
   `kite-x402-axum` and the other reference projects. The report shape is designed to be consumed
   next to a gateway's own ledger export — see [`fixtures/ledger.jsonl`](fixtures/ledger.jsonl) for
@@ -92,9 +124,9 @@ cargo run -- --config recon.toml scan --format text
 ```
 
 The bundled fixtures intentionally contain one record of each outcome, so the summary is exactly
-`total=7 matched=2 pending=1 mismatched=1 failed=1 unknown=2 orphans=1`. Mock mode is labelled in
-every output (`mode=mock`) and `scan` prints a note — a fixture run can never be mistaken for
-on-chain evidence.
+`total=7 matched=2 pending=1 mismatched=1 failed=1 unknown=2 orphans=1 duplicates=0`. Mock mode is
+labelled in every output (`mode=mock`) and `scan` prints a note — a fixture run can never be
+mistaken for on-chain evidence.
 
 ## Configuration
 
@@ -113,7 +145,7 @@ Key fields:
 | `reconcile.receiver` | Your x402 pay-to address; records for other addresses are `unknown`. |
 | `reconcile.window_minutes` | Records older than this are `unknown` **in live mode**; fixtures are frozen recordings and skip the check. |
 | `reconcile.search_lookback_blocks` | Block span for log search when a record has no tx hash. |
-| `ledger.kind` | `file` (JSONL) or `http` (gateway endpoint returning an array or `{"records":[…]}`). |
+| `ledger.kind` | `file` (JSONL), `hono_file` (`kite-x402-hono` receipt dump), or `http` (gateway endpoint returning an array or `{"records":[…]}`). |
 
 ## Ledger record format
 
@@ -127,6 +159,42 @@ One JSON object per line (or per array element over HTTP):
 - `observed_at` is RFC 3339.
 - `tx_hash` and `payer` are optional; without `tx_hash` the log search path is used.
 - The HTTP response may be a bare array or `{"records":[…]}`; both are accepted.
+
+### `kite-x402-hono` receipts
+
+Point `ledger.kind = "hono_file"` at a JSONL dump of the gateway's `SettlementReceipt` objects
+(`txHash`, `payer`, `payTo`, `amount`, `network`, `timestamp`, `success`). The adapter maps them to
+the internal record shape (`timestamp` may be seconds or milliseconds) and then verifies each one
+against the chain — the gateway's `success` flag is **not** trusted. See
+[`fixtures/hono_receipts.jsonl`](fixtures/hono_receipts.jsonl) and:
+
+```bash
+RECON_LEDGER_KIND=hono_file \
+RECON_LEDGER_PATH=fixtures/hono_receipts.jsonl \
+RECON_CHAIN_MODE=mock \
+recon --config recon.example.toml scan --format text
+```
+
+That run prints `total=2 matched=1 pending=1 orphans=3 duplicates=0`: the gateway's
+`success=true` receipt is confirmed on chain, while the receipt it reported as failed is still
+pending — proof the adapter follows the chain, not the claim.
+
+### Duplicate claims
+
+[`fixtures/ledger_duplicate.jsonl`](fixtures/ledger_duplicate.jsonl) contains two invoices pointing
+at the same transfer:
+
+```bash
+RECON_LEDGER_PATH=fixtures/ledger_duplicate.jsonl \
+RECON_CHAIN_MODE=mock \
+recon --config recon.example.toml scan --format text
+```
+
+```
+total=2 matched=1 pending=0 mismatched=0 failed=0 unknown=1 orphans=3 duplicates=1
+UNKNOWN inv_second … :: transaction hash already claimed by record inv_first;
+                             one transfer cannot pay two invoices
+```
 
 ## HTTP API
 
