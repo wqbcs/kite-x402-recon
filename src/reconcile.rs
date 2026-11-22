@@ -2,7 +2,7 @@
 //! and a deterministic outcome per record. Every decision records the reason so
 //! a difference can be explained without re-running anything.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::chain::{ChainClient, Receipt, Transfer, TransferQuery};
@@ -82,11 +82,22 @@ impl Reconciler {
         let mut summary = Summary::default();
         let mut findings = Vec::with_capacity(records.len());
         let mut consumed: HashSet<String> = HashSet::new();
+        let mut claimed: HashMap<String, String> = HashMap::new();
 
         for record in &records {
-            let finding = self.evaluate(record, tip, now).await;
-            if let Some(hash) = finding.tx_hash.as_deref() {
-                consumed.insert(hash.to_ascii_lowercase());
+            let mut finding = self.evaluate(record, tip, now).await;
+            if let Some(hash) = finding.tx_hash.clone() {
+                let key = hash.to_ascii_lowercase();
+                if let Some(first_id) = claimed.get(&key) {
+                    finding.outcome = Outcome::Unknown;
+                    finding.reason = format!(
+                        "transaction hash already claimed by record {first_id}; one transfer cannot pay two invoices"
+                    );
+                    summary.duplicates += 1;
+                } else {
+                    claimed.insert(key.clone(), finding.id.clone());
+                }
+                consumed.insert(key);
             }
             summary.record(finding.outcome);
             findings.push(finding);
@@ -595,6 +606,36 @@ mod tests {
         };
         assert_eq!(report.summary.unknown, 2);
         assert!(report.records.iter().all(|r| !r.reason.is_empty()));
+    }
+
+    #[test]
+    fn one_transfer_cannot_claim_two_invoices() {
+        let chain = in_memory(
+            2368,
+            1_000,
+            vec![(
+                HASH.to_string(),
+                Receipt {
+                    status: true,
+                    block_number: 990,
+                    logs: vec![transfer(HASH, 990, PAYER, RECEIVER, 10_000)],
+                },
+            )],
+            vec![],
+        );
+        let ledger = MemoryLedger::new(vec![
+            record("inv_a", "10000", Some(HASH)),
+            record("inv_b", "10000", Some(HASH)),
+        ]);
+        let report = block_on(reconciler(chain, 1).report(&ledger, now()));
+        let report = match report {
+            Ok(r) => r,
+            Err(e) => panic!("reconcile failed: {e}"),
+        };
+        assert_eq!(report.records[0].outcome, Outcome::Matched);
+        assert_eq!(report.records[1].outcome, Outcome::Unknown);
+        assert_eq!(report.summary.duplicates, 1);
+        assert!(report.records[1].reason.contains("already claimed"));
     }
 
     #[test]

@@ -114,6 +114,9 @@ pub struct Summary {
     pub failed: usize,
     pub unknown: usize,
     pub orphans: usize,
+    /// Records that claimed a transaction hash already claimed by an earlier
+    /// record. Always counted inside `unknown` as well.
+    pub duplicates: usize,
 }
 
 impl Summary {

@@ -22,8 +22,8 @@ pub fn to_text(report: &Report) -> String {
     let s = &report.summary;
     let _ = writeln!(
         out,
-        "total={} matched={} pending={} mismatched={} failed={} unknown={} orphans={}",
-        s.total, s.matched, s.pending, s.mismatched, s.failed, s.unknown, s.orphans
+        "total={} matched={} pending={} mismatched={} failed={} unknown={} orphans={} duplicates={}",
+        s.total, s.matched, s.pending, s.mismatched, s.failed, s.unknown, s.orphans, s.duplicates
     );
     if report.mode == "mock" {
         let _ = writeln!(
