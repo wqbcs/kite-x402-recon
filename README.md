@@ -264,6 +264,20 @@ receipt normalisation, `capture → scan` round trip, bearer auth, JSON shape, e
 [`docs/TESTING.md`](docs/TESTING.md) and the recorded runs in
 [`docs/EVIDENCE.md`](docs/EVIDENCE.md).
 
+## Documentation map
+
+| Document | Contents |
+| --- | --- |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | layout, module responsibilities, key flows, extension points |
+| [`docs/CLI.md`](docs/CLI.md) | every command, option, env override and exit code |
+| [`docs/API.md`](docs/API.md) | HTTP routes, auth, response shape, errors |
+| [`docs/TESTING.md`](docs/TESTING.md) | coverage map, determinism rules, fixture contract |
+| [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | build, systemd/cron sketches, container, failure modes |
+| [`docs/EVIDENCE.md`](docs/EVIDENCE.md) | dated records: CI, mock run, hono dump, duplicate claims, real testnet round trip |
+| [`docs/SUBMISSION.md`](docs/SUBMISSION.md) | review bundle: repo, Open Dev Data status, commits, test results, demo commands |
+| [`CHANGELOG.md`](CHANGELOG.md) | version history |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | local dev, review expectations, commit style |
+
 ## Known limitations
 
 - **Read-only by design**: no key handling, no settlement retry, no state storage.

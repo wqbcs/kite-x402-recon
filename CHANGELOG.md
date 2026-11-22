@@ -5,6 +5,12 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.2.0] - 2026-11-22
+
+Real transaction data end to end, and the ecosystem hook the first version lacked.
+
 ### Added
 
 - `recon capture`: writes a `ledger.kind = "file"` JSONL from the token transfers a block range
@@ -22,6 +28,8 @@ All notable changes to this project are documented here. Format follows
 - Testnet payment-token guidance updated to the Kite Service Provider Guide address
   `0x0fF5393387ad2f9f691FD6Fd28e07E3969e27e63`; the fixture placeholder in
   `recon.example.toml` is unchanged and explained inline.
+- `fixtures/kite_testnet_capture.jsonl`: two real testnet transfers captured 2026-11-22, used by
+  the recorded live round trip in [`docs/EVIDENCE.md`](docs/EVIDENCE.md).
 
 ### Planned
 

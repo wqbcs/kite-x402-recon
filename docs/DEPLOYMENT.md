@@ -82,6 +82,22 @@ The process only needs outbound HTTPS to the RPC and ledger endpoints; no elevat
 Exit codes are the contract: `1` = differences (page someone), `2` = pending under `--strict`
 (informational), `0` = clean. Codes are documented in [`docs/CLI.md`](CLI.md).
 
+## Recovering a missing ledger
+
+If the gateway lost its ledger, rebuild the evidence from the chain before auditing:
+
+```bash
+recon --config /etc/kite-x402-recon/recon.toml capture \
+  --from-block "$(($(recon probe --json | jq .tip) - 5000))" \
+  --out /var/lib/recon/captured-$(date +%F).jsonl
+```
+
+- Capture and audit must cover overlapping ranges: an `orphan` is money inside the audit window
+  but outside the capture range, which is the intended signal, not noise.
+- Captured `observed_at` is capture time. Keep the file: it is a dated snapshot, and re-running
+  capture later will include newer transfers.
+- `capture` is read-only like everything else; it cannot move funds or repair a payment.
+
 ## Container (optional)
 
 ```dockerfile
