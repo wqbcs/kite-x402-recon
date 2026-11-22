@@ -11,9 +11,11 @@ checkout of `main` on 2026-11-22.
 | Lints | `cargo clippy --all-targets -- -D warnings` | clean |
 | Tests | `cargo test --all-targets` | 38 passed (32 unit, 3 CLI, 3 HTTP), 0 failed |
 | Docs | `cargo doc --no-deps` | no warnings |
-| CI | GitHub Actions `CI` on push `f30ed70` | fmt+clippy+test on ubuntu-latest ✅, windows-latest ✅, rustdoc ✅ |
+| CI | GitHub Actions `CI` on push `418a69c` | #3 completed successfully (2m 2s): fmt+clippy+test on ubuntu-latest ✅, windows-latest ✅, rustdoc ✅ |
 
-CI run: <https://github.com/wqbcs/kite-x402-recon/actions/runs/45039227007>
+CI runs: <https://github.com/wqbcs/kite-x402-recon/actions/runs/45039227007> (`f30ed70`),
+<https://github.com/wqbcs/kite-x402-recon/actions/runs/45040413110> (`7ab7a80`), and the latest on
+`418a69c` on the same Actions page.
 
 ## Mock run (no network)
 
