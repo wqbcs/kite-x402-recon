@@ -1,0 +1,45 @@
+# Copy to recon.toml and edit. Everything here is safe to commit except tokens,
+# which are read from environment variables and never stored in the file.
+
+[chain]
+# "mock" replays fixtures/chain_mock.json and never touches the network.
+# "live" reads the RPC endpoint below; it fails closed and never falls back to
+# fixtures.
+mode = "mock"
+rpc_url = "https://rpc-testnet.gokite.ai/"
+chain_id = 2368
+# Settlement token contract. The value below is a placeholder for the bundled
+# fixture; for a real deployment copy the official contract from
+# https://docs.gokite.ai and verify it on https://testnet.kitescan.ai.
+token_address = "0x3333333333333333333333333333333333333333"
+token_decimals = 6
+# Blocks that must be buried before a payment is treated as final.
+min_confirmations = 1
+timeout_ms = 15000
+
+[ledger]
+# "file" reads JSONL, "http" reads {"records":[...]} from a gateway endpoint.
+kind = "file"
+path = "fixtures/ledger.jsonl"
+url = ""
+# Name of the environment variable holding the bearer token for `kind = "http"`.
+bearer_token_env = "RECON_LEDGER_TOKEN"
+
+[reconcile]
+# The address your x402 resource server is supposed to be paid into.
+receiver = "0x2222222222222222222222222222222222222222"
+# Records observed earlier than this are reported as unknown in live mode.
+window_minutes = 60
+max_records = 500
+# Blocks scanned backwards from the tip when a record has no tx hash.
+search_lookback_blocks = 2000
+
+[server]
+bind = "127.0.0.1:8081"
+# Name of the environment variable holding the API bearer token. Leave the
+# variable unset only for loopback binds.
+api_token_env = "RECON_API_TOKEN"
+refresh_seconds = 30
+
+[mock]
+fixture = "fixtures/chain_mock.json"
