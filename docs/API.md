@@ -48,6 +48,7 @@ Success: `200 OK`, `Content-Type: application/json`,
   "generated_at": "2026-11-22T15:31:30Z",
   "window_minutes": 60,
   "chain_tip": 1000,
+  "anchored": false,
   "search": { "from_block": 700, "to_block": 1000, "lookback_blocks": 300, "block_seconds": 12 },
   "summary": {
     "total": 7, "matched": 2, "pending": 1, "mismatched": 1,
@@ -81,6 +82,8 @@ Success: `200 OK`, `Content-Type: application/json`,
 Field notes:
 
 - `mode` is always present; `mock` means the numbers came from a fixture, never from a chain.
+- `anchored` is `true` when `chain_tip` is an explicit `--at-block` anchor rather than the live tip,
+  so an old-looking tip in a report is explainable instead of being read as a stalled chain.
 - `search` is the block range the verdicts came from. Without it a reader cannot tell "the money is
   missing" from "the search stopped early", so treat it as part of the result rather than metadata.
   `block_seconds` is the measured block time that produced the range (`null` when alignment is off

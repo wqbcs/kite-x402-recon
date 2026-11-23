@@ -173,7 +173,7 @@ with both captured records in the ledger:
 ```
 $ RECON_WINDOW_MINUTES=1440 RECON_LEDGER_PATH=fixtures/kite_testnet_capture.jsonl \
   recon scan --format text --at-block 22045335
-mode=live chain_id=2368 tip=22045335 window=1440m search=22045237..22045335 (98 blocks, 886s/block)
+mode=live chain_id=2368 tip=22045335 (anchored) window=1440m search=22045237..22045335 (98 blocks, 886s/block)
 total=2 matched=2 pending=0 mismatched=0 failed=0 unknown=0 orphans=0 duplicates=0
 ```
 

@@ -20,8 +20,9 @@ All notable changes to this project are documented here. Format follows
 - `scan --at-block <n>` / `Reconciler::with_anchor_tip`: evaluate the ledger as of a past block
   instead of the current tip. The aligned range, orphan scan and confirmation counts all move with
   the anchor, so "what did this window look like at block X" can be replayed days later and yield
-  the same answer — and the same measured block time. Refused with exit `78` when the anchor is
-  ahead of the tip.
+  the same answer — and the same measured block time. `report.anchored` / `tip=N (anchored)` mark
+  such a run, so an old tip in a report is not mistaken for a stalled chain. Refused with exit `78`
+  when the anchor is ahead of the tip.
 
 ### Changed
 
