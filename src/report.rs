@@ -240,6 +240,19 @@ mod tests {
     }
 
     #[test]
+    fn an_anchored_report_says_the_tip_is_an_anchor() {
+        let mut report = sample();
+        report.chain_tip = 900;
+        report.anchored = true;
+        assert!(to_text(&report).contains("tip=900 (anchored)"));
+        assert!(to_markdown(&report).contains("tip 900 (anchored)"));
+        assert!(to_json(&report)
+            .unwrap_or_default()
+            .contains(r#""anchored": true"#));
+        assert!(!to_text(&sample()).contains("(anchored)"));
+    }
+
+    #[test]
     fn exit_codes_distinguish_findings_from_pending() {
         let mut report = sample();
         assert_eq!(exit_code(&report, false), 1);
