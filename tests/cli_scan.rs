@@ -89,6 +89,9 @@ fn probe_reads_mock_metadata_without_network() {
     assert_eq!(body["tip"], 1000);
     assert_eq!(body["token_symbol"], "USDT");
     assert_eq!(body["token_decimals"], 6);
+    // Fixture blocks are 12 s apart, which is what `--window-minutes` and
+    // `--align-window` rely on; the probe must expose it.
+    assert_eq!(body["block_seconds"], 12);
 }
 
 #[test]

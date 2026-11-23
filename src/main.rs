@@ -177,6 +177,16 @@ async fn probe(config: &Config, chain: &dyn ChainClient, json: bool) -> ExitCode
         .token_decimals()
         .await
         .unwrap_or(config.chain.token_decimals);
+    // Block time decides how a wall-clock window maps to blocks, so it belongs in
+    // the probe: an operator choosing `window_minutes` needs it before the first
+    // scan, not after a run reports hundreds of orphans.
+    let block_seconds = match capture::average_block_seconds(chain, tip).await {
+        Ok(seconds) => Some(seconds),
+        Err(e) => {
+            tracing::warn!("block time unavailable: {e}");
+            None
+        }
+    };
     let body = if json {
         serde_json::json!({
             "mode": mode_label(config),
@@ -184,6 +194,7 @@ async fn probe(config: &Config, chain: &dyn ChainClient, json: bool) -> ExitCode
             "rpc_url": config.chain.rpc_url,
             "tip": tip,
             "tip_time": format_unix(now_unix()),
+            "block_seconds": block_seconds,
             "token_address": config.chain.token_address,
             "token_symbol": symbol,
             "token_decimals": decimals,
@@ -193,10 +204,13 @@ async fn probe(config: &Config, chain: &dyn ChainClient, json: bool) -> ExitCode
         .to_string()
     } else {
         format!(
-            "mode={} chain_id={} tip={} token={} decimals={} receiver={}\n",
+            "mode={} chain_id={} tip={} block_s={} token={} decimals={} receiver={}\n",
             mode_label(config),
             config.chain.chain_id,
             tip,
+            block_seconds
+                .map(|seconds| seconds.to_string())
+                .unwrap_or_else(|| "-".to_string()),
             if symbol.is_empty() {
                 "-"
             } else {
