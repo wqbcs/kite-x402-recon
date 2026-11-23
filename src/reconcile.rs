@@ -231,6 +231,7 @@ impl Reconciler {
             generated_at: format_unix(now),
             window_minutes: self.window_minutes,
             chain_tip: tip,
+            anchored: self.anchor_tip.is_some(),
             search: SearchWindow {
                 from_block: tip.saturating_sub(self.lookback_blocks),
                 to_block: tip,

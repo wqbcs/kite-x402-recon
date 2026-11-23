@@ -33,6 +33,7 @@ fn scan_reports_every_fixture_outcome() {
     assert_eq!(report["mode"], "mock");
     assert_eq!(report["chain_id"], 2368);
     assert_eq!(report["chain_tip"], 1000);
+    assert_eq!(report["anchored"], false);
     let summary = &report["summary"];
     assert_eq!(summary["total"], 7);
     assert_eq!(summary["matched"], 2);
@@ -97,6 +98,7 @@ fn at_block_anchors_the_window_in_the_past() {
     ]);
     let report = json_of(&output);
     assert_eq!(report["chain_tip"], 900);
+    assert_eq!(report["anchored"], true);
     assert_eq!(report["search"]["to_block"], 900);
     // 60 minutes at 12 s/block is 300 blocks, anchored at 900.
     assert_eq!(report["search"]["from_block"], 600);

@@ -161,7 +161,13 @@ pub struct Report {
     pub chain_id: u64,
     pub generated_at: String,
     pub window_minutes: u64,
+    /// Tip the verdicts were taken at. When `anchored` is set this is the
+    /// requested past block, not the current tip.
     pub chain_tip: u64,
+    /// True when `chain_tip` is an explicit anchor (`scan --at-block`) rather
+    /// than wherever the chain happened to be.
+    #[serde(default)]
+    pub anchored: bool,
     /// Blocks searched for orphan transfers and hash-less records.
     pub search: SearchWindow,
     pub summary: Summary,

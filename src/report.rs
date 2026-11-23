@@ -16,10 +16,11 @@ pub fn to_text(report: &Report) -> String {
     let mut out = String::new();
     let _ = writeln!(
         out,
-        "mode={} chain_id={} tip={} window={}m search={}..{} ({} blocks{}) generated_at={}",
+        "mode={} chain_id={} tip={}{} window={}m search={}..{} ({} blocks{}) generated_at={}",
         report.mode,
         report.chain_id,
         report.chain_tip,
+        if report.anchored { " (anchored)" } else { "" },
         report.window_minutes,
         report.search.from_block,
         report.search.to_block,
@@ -69,10 +70,11 @@ pub fn to_markdown(report: &Report) -> String {
     let mut out = String::new();
     let _ = writeln!(
         out,
-        "> `{}` chain {} · tip {} · audit window {}m · searched blocks {}..{} ({} blocks{})",
+        "> `{}` chain {} · tip {}{} · audit window {}m · searched blocks {}..{} ({} blocks{})",
         report.mode,
         report.chain_id,
         report.chain_tip,
+        if report.anchored { " (anchored)" } else { "" },
         report.window_minutes,
         report.search.from_block,
         report.search.to_block,
@@ -146,6 +148,7 @@ mod tests {
             generated_at: "2026-11-22T10:00:00Z".into(),
             window_minutes: 60,
             chain_tip: 1000,
+            anchored: false,
             search: crate::model::SearchWindow {
                 from_block: 0,
                 to_block: 1000,
