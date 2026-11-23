@@ -103,6 +103,7 @@ gateway ledger to audit (or it was lost), or to seed a regression fixture from r
 | Option | Default | Meaning |
 | --- | --- | --- |
 | `--from-block <n>` | `to_block - search_lookback_blocks` | First block, inclusive. |
+| `--window-minutes <n>` | off | Derive `from_block` from an audit window using the chain's measured block time (two `eth_getBlockByNumber` calls). Conflicts with `--from-block`. |
 | `--to-block <n>` | current tip | Last block, inclusive. |
 | `--receiver <addr>` | `reconcile.receiver` | Keep only transfers paid to this address. |
 | `--out <path>` | required | JSONL destination; stdout only carries the one-line summary. |
@@ -111,7 +112,18 @@ gateway ledger to audit (or it was lost), or to seed a regression fixture from r
 recon --config recon.toml capture --from-block 22045179 --to-block 22045329 \
   --receiver 0x66336f24e38b5b155cd3b50f635b1bb0f1098b1d --out captured.jsonl
 # mode=live chain_id=2368 blocks=22045179..22045329 receiver=0x6633…8b1d records=2 out=captured.jsonl
+
+recon --config recon.toml capture --window-minutes 1440 --out captured-24h.jsonl
+# mode=live chain_id=2368 blocks=22045237..22045335 window=1440m avg_block_s=886 records=1 out=…
 ```
+
+- `--window-minutes` is measured, not assumed: the tool samples the tip block and a block up to
+  1000 back, then rounds the block count up so the range can only be wider, never short.
+  On Kite testnet (2026-11-23) this measured ~886 s per block, i.e. a 24-hour window was only
+  ~97 blocks — a fixed `search_lookback_blocks` would have been wildly oversized.
+- When the estimated block count is smaller than `reconcile.search_lookback_blocks`, a warning
+  is logged: `scan` still searches the larger range, so transfers outside the captured range will
+  surface as orphans. Set `RECON_LOOKBACK_BLOCKS` near the captured block count to align them.
 
 - `observed_at` is the capture time, not the settlement time; `tx_hash` ties the record to the
   transfer. This is documented in the README and in `src/capture.rs`.

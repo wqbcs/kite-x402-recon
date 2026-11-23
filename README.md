@@ -151,12 +151,18 @@ recon --config recon.example.toml capture \
 Then audit it exactly like a gateway ledger (`RECON_LEDGER_PATH=captured.jsonl recon scan`). Two
 things to know:
 
+- **The range can be derived from the audit window**: `capture --window-minutes 1440` samples the
+  chain's actual block time (tip vs. up to 1000 blocks back) and rounds the block count up, so the
+  range is never short. On Kite testnet that measured ~886 s/block on 2026-11-23 — a fixed
+  lookback in blocks would have been off by orders of magnitude.
 - `observed_at` in captured records is the **capture time**, not the settlement time: `eth_getLogs`
   has no wall clock, and asking per block would double the RPC calls. The `tx_hash` is the link to
   the real settlement moment.
 - Capture narrows the block range; `scan` searches the `window_minutes` window. A transfer that
   settled inside the audit window but outside your capture range shows up as an `orphan` — that is
-  not a false positive, it is money your ledger never recorded.
+  not a false positive, it is money your ledger never recorded. If the estimated range is smaller
+  than `search_lookback_blocks`, `capture` logs a warning telling you to align
+  `RECON_LOOKBACK_BLOCKS`.
 
 ## Configuration
 

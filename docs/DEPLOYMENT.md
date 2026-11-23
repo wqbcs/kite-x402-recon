@@ -88,12 +88,15 @@ If the gateway lost its ledger, rebuild the evidence from the chain before audit
 
 ```bash
 recon --config /etc/kite-x402-recon/recon.toml capture \
-  --from-block "$(($(recon probe --json | jq .tip) - 5000))" \
+  --window-minutes 1440 \
   --out /var/lib/recon/captured-$(date +%F).jsonl
 ```
 
+- Prefer `--window-minutes` over a hand-computed `--from-block`: it measures the chain's block
+  time, so the range matches the audit window even when block production is irregular.
 - Capture and audit must cover overlapping ranges: an `orphan` is money inside the audit window
-  but outside the capture range, which is the intended signal, not noise.
+  but outside the capture range, which is the intended signal, not noise. Keep
+  `RECON_LOOKBACK_BLOCKS` near the captured block count to make the two ranges agree.
 - Captured `observed_at` is capture time. Keep the file: it is a dated snapshot, and re-running
   capture later will include newer transfers.
 - `capture` is read-only like everything else; it cannot move funds or repair a payment.

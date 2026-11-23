@@ -80,6 +80,46 @@ UNKNOWN  inv_second … tx=0x1111… :: transaction hash already claimed by reco
 Orphans are the mirror case (money without an invoice). Duplicate claims are invoices competing for
 the same money — the failure mode that makes a naive "sum matched amounts" reconciliation overcount.
 
+## Window-aligned capture (2026-11-23)
+
+The fixed-lookback default does not fit every chain. `capture --window-minutes` measures block
+time: it reads the tip block and a block up to 1000 back, computes the average, and rounds the
+block count up.
+
+At tip `22045335` on Kite testnet the measurement was **886 seconds per block** (the chain is not a
+12-second chain):
+
+```bash
+RECON_CHAIN_MODE=live RECON_TOKEN_ADDRESS=0x0fF5…7e63 \
+recon --config recon.example.toml capture --window-minutes 60 \
+  --receiver 0x66336f24e38b5b155cd3b50f635b1bb0f1098b1d --out /tmp/60m.jsonl
+# mode=live chain_id=2368 blocks=22045330..22045335 window=60m avg_block_s=886 records=0
+
+recon --config recon.example.toml capture --window-minutes 1440 \
+  --receiver 0x66336f24e38b5b155cd3b50f635b1bb0f1098b1d --out /tmp/24h.jsonl
+# mode=live chain_id=2368 blocks=22045237..22045335 window=1440m avg_block_s=886 records=1
+```
+
+Auditing the 24-hour capture against the chain:
+
+```
+total=1 matched=1 pending=0 mismatched=0 failed=0 unknown=0 orphans=15 duplicates=0
+MATCHED 0x13a25fa7…fd39e amount=2000000000000000000 :: confirmed at block 22045327
+```
+
+Findings that came out of this and are now written into the docs:
+
+- A 60-minute window is only ~4 blocks on this chain, so "nothing captured" is a correct answer,
+  not a failure. The 24-hour window captured the real settlement and it matched.
+- The 15 orphans are transfers inside `scan`'s 2000-block search range — which at 886 s/block is
+  roughly **20 days**, far wider than a 24-hour audit. That is why `capture` warns when the
+  estimated range is below `search_lookback_blocks`: the two ranges must be aligned deliberately
+  (`RECON_LOOKBACK_BLOCKS` close to the captured block count) or the orphan list will include
+  genuinely old money.
+- The `search_lookback_blocks = 2000` default was chosen for ~12 s chains; on Kite testnet it is
+  an order of magnitude too wide. Operators should derive it from `window_minutes` with this
+  measurement, not copy the default.
+
 ## Real transfers, captured and reconciled against Kite testnet
 
 This is the run that makes the tool more than a fixture demo. On 2026-11-22 at tip `22045329`,

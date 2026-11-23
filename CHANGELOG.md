@@ -5,7 +5,13 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- `capture --window-minutes <n>`: derive the block range from an audit window using the chain's
+  measured block time (`eth_getBlockByNumber` at the tip and up to 1000 blocks back), rounding up
+  so the range is never short. Conflicts with `--from-block`. A warning is logged when `scan` will
+  search a wider range than was captured. Verified live on Kite testnet, where the measurement
+  returned ~886 s/block and a 24-hour window mapped to 97 blocks.
 
 ## [0.2.0] - 2026-11-22
 
