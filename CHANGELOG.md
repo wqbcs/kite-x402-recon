@@ -7,6 +7,10 @@ All notable changes to this project are documented here. Format follows
 
 ### Added
 
+- `probe` reports `block_seconds` (text `block_s=`, JSON `block_seconds`): the measured average
+  block time, `null` when it cannot be read. It is the number that decides whether
+  `search_lookback_blocks` makes sense on a given chain (2000 blocks ≈ 7 h at 12 s, ≈ 20 days at
+  Kite testnet's 886 s), so it belongs in the first command an operator runs.
 - `report.search` (`{from_block, to_block, lookback_blocks}`) in JSON, `search=…` in text and a
   provenance line in Markdown: a verdict now carries the block range it was derived from, so
   "no transfer found" can be distinguished from "the search stopped too early".

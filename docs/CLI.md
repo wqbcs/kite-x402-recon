@@ -18,15 +18,19 @@ Checks the configured chain reader without touching the ledger.
 
 ```bash
 recon --config recon.toml probe
-# mode=mock chain_id=2368 tip=1000 token=USDT decimals=6 receiver=0x2222…
+# mode=mock chain_id=2368 tip=1000 block_s=12 token=USDT decimals=6 receiver=0x2222…
 
 recon --config recon.toml probe --json
 # {"mode":"mock","chain_id":2368,"rpc_url":"…","tip":1000,"tip_time":"…",
-#  "token_address":"0x…","token_symbol":"USDT","token_decimals":6,
-#  "receiver":"0x…","ledger":"file"}
+#  "block_seconds":12,"token_address":"0x…","token_symbol":"USDT",
+#  "token_decimals":6,"receiver":"0x…","ledger":"file"}
 ```
 
 - `tip` requires a chain call; in `live` mode an unreachable RPC exits `69`.
+- `block_seconds` is the measured average block time (tip vs. up to 1000 blocks back), the same
+  measurement `capture --window-minutes` and `scan --align-window` use. It is the number that tells
+  you whether `search_lookback_blocks` is sane for this chain: 2000 blocks is ~7 hours on a 12 s
+  chain and ~20 days on Kite testnet (886 s). `null` / `-` means it could not be measured.
 - `token_symbol` / `token_decimals` failures are warnings, not failures (non-standard tokens).
 - `tip_time` is the local observation time, not block time.
 

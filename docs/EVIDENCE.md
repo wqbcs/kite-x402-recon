@@ -87,7 +87,12 @@ time: it reads the tip block and a block up to 1000 back, computes the average, 
 block count up.
 
 At tip `22045335` on Kite testnet the measurement was **886 seconds per block** (the chain is not a
-12-second chain):
+12-second chain), and `probe` now prints it directly:
+
+```bash
+recon --config recon.example.toml probe
+# mode=live chain_id=2368 tip=22045335 block_s=886 token=USDT decimals=18 receiver=0x6633…8b1d
+```
 
 ```bash
 RECON_CHAIN_MODE=live RECON_TOKEN_ADDRESS=0x0fF5…7e63 \

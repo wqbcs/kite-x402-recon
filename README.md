@@ -30,7 +30,7 @@ re-submitting settlements, no writing to a chain.
 
 | Command | Purpose |
 | --- | --- |
-| `recon probe` | Verify RPC reachability, chain id, tip and token metadata (symbol/decimals). |
+| `recon probe` | Verify RPC reachability, chain id, tip, measured block time and token metadata (symbol/decimals). |
 | `recon scan` | Reconcile one ledger batch against the chain window; render `text`, `json` or `markdown`. |
 | `recon capture` | Rebuild a ledger file from the token transfers a block range contains (recovery path). |
 | `recon serve` | Expose the same report over a small read-only HTTP API (`/healthz`, `/api/v1/reconcile`). |
