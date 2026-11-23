@@ -9,7 +9,7 @@ checkout of `main` on 2026-11-22.
 | --- | --- | --- |
 | Format | `cargo fmt --all --check` | clean |
 | Lints | `cargo clippy --all-targets -- -D warnings` | clean |
-| Tests | `cargo test --all-targets` | 57 passed (45 unit, 4 capture CLI, 5 scan CLI, 3 HTTP), 0 failed |
+| Tests | `cargo test --all-targets` | 59 passed (45 unit, 4 capture CLI, 5 scan CLI, 5 HTTP), 0 failed |
 | Docs | `cargo doc --no-deps` | no warnings |
 | CI | GitHub Actions `CI` on push `418a69c` | #3 completed successfully (2m 2s): fmt+clippy+test on ubuntu-latest ✅, windows-latest ✅, rustdoc ✅ |
 
@@ -181,6 +181,27 @@ The live tip had meanwhile moved to `22045342` and measured 898 s/block, yet the
 reproduces the same range **and the same 886 s/block**, because the anchor pins the block the
 measurement is taken at. Without it the same command today searches 5 blocks and reports both
 records as outside the window. An audit claim that cannot be replayed is not evidence.
+
+## Replay through the HTTP surface (2026-11-23)
+
+`serve` exposes the same anchor as a query parameter, so a dashboard does not need a second
+deployment or a CLI shell to show a historical window. Running the server against live testnet
+with the 24-hour window and one captured-ledger:
+
+```
+GET /api/v1/reconcile?at_block=22045335
+
+{
+  "chain_tip": 22045335,
+  "anchored": true,
+  "search": { "from_block": 22045237, "to_block": 22045335,
+              "lookback_blocks": 98, "block_seconds": 886 }
+}
+```
+
+Same range and same 886 s/block as the CLI replay above, produced by an HTTP request while the
+live tip was already at `22045342`. `tests/http_api.rs` pins the anchored response and the `400`
+paths (`at_block=0`, non-numeric, ahead of tip), so the two surfaces cannot drift apart.
 
 The report states the searched range it drew its verdicts from (`search=22045237..22045335`,
 98 blocks). Without that line a reader cannot separate "the money is missing" from "the search

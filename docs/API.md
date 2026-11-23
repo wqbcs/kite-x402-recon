@@ -38,6 +38,13 @@ Comparisons are constant-time. `/healthz` never requires auth (probes must work 
 
 Runs one reconciliation pass with `now = server time` and returns the report.
 
+Optional query parameter `at_block=<n>` evaluates the ledger as of that block instead of the
+current tip — the HTTP equivalent of `scan --at-block`. The anchored range, orphan scan and
+confirmation counts all move with it, and `anchored` becomes `true` in the response, so a dashboard
+can render a historical audit without a second deployment. `at_block=0`, a non-numeric value, or a
+block ahead of the live tip returns `400` with `{"error": "..."}`. Each anchored request is a clone
+of the shared reconciler, so concurrent live requests are unaffected.
+
 Success: `200 OK`, `Content-Type: application/json`,
 `Cache-Control: max-age=<server.refresh_seconds>`.
 

@@ -17,6 +17,9 @@ All notable changes to this project are documented here. Format follows
 
 ### Added
 
+- `GET /api/v1/reconcile?at_block=<n>`: the served API can replay a past window, mirroring
+  `scan --at-block`; each anchored read clones the shared reconciler, so live requests are
+  unaffected. Invalid or future anchors return `400`.
 - `scan --at-block <n>` / `Reconciler::with_anchor_tip`: evaluate the ledger as of a past block
   instead of the current tip. The aligned range, orphan scan and confirmation counts all move with
   the anchor, so "what did this window look like at block X" can be replayed days later and yield
