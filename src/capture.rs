@@ -8,9 +8,32 @@
 
 use std::collections::HashSet;
 
-use crate::chain::Transfer;
-use crate::error::Result;
+use crate::chain::{ChainClient, Transfer};
+use crate::error::{ReconError, Result};
 use crate::model::LedgerRecord;
+
+/// How many blocks back to sample when measuring block time. 1000 blocks is
+/// enough to smooth out bursts on a normal chain and cheap on any of them.
+pub const BLOCK_TIME_SAMPLE: u64 = 1000;
+
+/// Measure the chain's own block time in whole seconds.
+///
+/// A fixed lookback in blocks is meaningless without knowing how long a block
+/// lasts: on Kite testnet (2026-11-23) blocks averaged 886 s, so 2000 blocks was
+/// about 20 days rather than the ~7 hours the default assumed. Flooring a
+/// sub-second average and rounding the derived block count up can only widen a
+/// window, which is the safe direction for an audit.
+pub async fn average_block_seconds(chain: &dyn ChainClient, tip: u64) -> Result<u64> {
+    let span = BLOCK_TIME_SAMPLE.min(tip);
+    if span == 0 {
+        return Err(ReconError::Chain(
+            "cannot measure block time at block 0".into(),
+        ));
+    }
+    let tip_time = chain.block_timestamp(tip).await?;
+    let old_time = chain.block_timestamp(tip - span).await?;
+    Ok((tip_time.saturating_sub(old_time) / span).max(1))
+}
 
 /// Blocks needed to cover a wall-clock window at a measured block time.
 ///
@@ -70,12 +93,38 @@ pub fn to_jsonl(records: &[LedgerRecord]) -> Result<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{blocks_for_window, ledger_from_transfers, to_jsonl};
+    use super::{average_block_seconds, blocks_for_window, ledger_from_transfers, to_jsonl};
     use crate::chain::Transfer;
+    use crate::mock::{in_memory, MOCK_BLOCK_SECONDS};
 
     const PAYER: &str = "0x4444444444444444444444444444444444444444";
     const PAY_TO: &str = "0x2222222222222222222222222222222222222222";
     const HASH: &str = "0x1111111111111111111111111111111111111111111111111111111111111111";
+
+    fn block_on<F: std::future::Future>(future: F) -> F::Output {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map(|rt| rt.block_on(future))
+            .unwrap_or_else(|e| panic!("runtime: {e}"))
+    }
+
+    #[test]
+    fn measured_block_time_matches_the_fixture_clock() {
+        let chain = in_memory(2368, 1000, vec![], vec![]);
+        let seconds = block_on(average_block_seconds(&chain, 1000));
+        let seconds = match seconds {
+            Ok(seconds) => seconds,
+            Err(e) => panic!("measurement failed: {e}"),
+        };
+        assert_eq!(seconds, MOCK_BLOCK_SECONDS);
+    }
+
+    #[test]
+    fn measurement_refuses_block_zero() {
+        let chain = in_memory(2368, 0, vec![], vec![]);
+        assert!(block_on(average_block_seconds(&chain, 0)).is_err());
+    }
 
     fn transfer(hash: &str, amount: u128) -> Transfer {
         Transfer {

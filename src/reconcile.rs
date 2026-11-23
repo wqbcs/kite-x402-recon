@@ -69,6 +69,17 @@ impl Reconciler {
         self.chain.chain_id()
     }
 
+    /// Override how far back the chain window is searched.
+    ///
+    /// The configured value is in blocks, which only matches a wall-clock audit
+    /// window when the block time is known. Callers that measured the chain's
+    /// block time pass the derived block count here so the search range and the
+    /// audit window describe the same period.
+    pub fn with_lookback_blocks(mut self, blocks: u64) -> Self {
+        self.lookback_blocks = blocks.max(1);
+        self
+    }
+
     /// Run one reconciliation pass at `now` (unix seconds).
     pub async fn report(
         &self,
@@ -651,5 +662,38 @@ mod tests {
         };
         assert_eq!(report.records[0].outcome, Outcome::Unknown);
         assert!(report.records[0].reason.contains("window"));
+    }
+
+    #[test]
+    fn an_aligned_lookback_excludes_transfers_outside_the_window() {
+        let old = "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+        let recent = "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+        let chain = in_memory(
+            2368,
+            1_000,
+            vec![],
+            vec![
+                transfer(old, 100, PAYER, RECEIVER, 5_000),
+                transfer(recent, 995, PAYER, RECEIVER, 5_000),
+            ],
+        );
+        let ledger = MemoryLedger::new(vec![]);
+        // 2000 blocks back reaches block 100: both transfers are orphans.
+        let wide = block_on(reconciler(chain.clone(), 1).report(&ledger, now()));
+        let wide = match wide {
+            Ok(r) => r,
+            Err(e) => panic!("reconcile failed: {e}"),
+        };
+        assert_eq!(wide.orphans.len(), 2);
+
+        // A window aligned to 10 blocks only sees the recent transfer.
+        let aligned = reconciler(chain, 1).with_lookback_blocks(10);
+        let narrow = block_on(aligned.report(&ledger, now()));
+        let narrow = match narrow {
+            Ok(r) => r,
+            Err(e) => panic!("reconcile failed: {e}"),
+        };
+        assert_eq!(narrow.orphans.len(), 1);
+        assert_eq!(narrow.orphans[0].tx_hash, recent);
     }
 }

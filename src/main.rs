@@ -46,6 +46,10 @@ enum Command {
         /// Also write the rendered report to this path.
         #[arg(long)]
         out: Option<PathBuf>,
+        /// Derive the searched block range from `reconcile.window_minutes` using
+        /// the chain's measured block time, instead of a fixed lookback in blocks.
+        #[arg(long)]
+        align_window: bool,
     },
     /// Write a ledger file from the token transfers a block range contains.
     Capture {
@@ -133,7 +137,8 @@ async fn run(cli: Cli) -> ExitCode {
             format,
             strict,
             out,
-        } => scan(&config, chain, format, strict, out.as_deref()).await,
+            align_window,
+        } => scan(&config, chain, format, strict, out.as_deref(), align_window).await,
         Command::Capture {
             from_block,
             to_block,
@@ -216,6 +221,7 @@ async fn scan(
     format: OutputFormat,
     strict: bool,
     out: Option<&std::path::Path>,
+    align_window: bool,
 ) -> ExitCode {
     let ledger = match ledger_from_config(config) {
         Ok(ledger) => ledger,
@@ -224,7 +230,36 @@ async fn scan(
             return ExitCode::from(78);
         }
     };
-    let reconciler = reconciler_from_config(config, chain);
+    let mut reconciler = reconciler_from_config(config, chain.clone());
+    if align_window {
+        // The configured lookback is in blocks, the audit window in minutes.
+        // Measuring the chain's block time is the only way to make those two
+        // describe the same period, and without it a slow chain silently turns
+        // a one-day audit into a month-long orphan sweep.
+        let tip = match chain.tip().await {
+            Ok(tip) => tip,
+            Err(e) => {
+                tracing::error!("chain probe failed: {e}");
+                return ExitCode::from(69);
+            }
+        };
+        let avg_seconds = match capture::average_block_seconds(&*chain, tip).await {
+            Ok(seconds) => seconds,
+            Err(e) => {
+                tracing::error!("cannot estimate block time: {e}");
+                return ExitCode::from(69);
+            }
+        };
+        let blocks = capture::blocks_for_window(config.reconcile.window_minutes, avg_seconds);
+        tracing::info!(
+            window_minutes = config.reconcile.window_minutes,
+            avg_block_s = avg_seconds,
+            lookback_blocks = %blocks,
+            configured_lookback_blocks = config.reconcile.search_lookback_blocks,
+            "window aligned to the chain's measured block time"
+        );
+        reconciler = reconciler.with_lookback_blocks(blocks);
+    }
     let result = reconciler.report(&*ledger, now_unix()).await;
     let report = match result {
         Ok(report) => report,
@@ -303,35 +338,23 @@ async fn capture_ledger(
         (None, Some(minutes)) => {
             // Measure the chain's own block time instead of assuming one, so a
             // 60-minute audit window maps to the right number of blocks on any
-            // chain. Integer division floors the average, which can only widen
-            // the range — over-capturing is the safe direction.
-            let span = 1000u64.min(to_block);
-            if span == 0 {
-                tracing::error!("cannot estimate block time at block 0; pass --from-block instead");
-                return ExitCode::from(78);
-            }
-            let tip_time = match chain.block_timestamp(to_block).await {
-                Ok(time) => time,
+            // chain. The helper floors a sub-second average and the block count
+            // is rounded up, so the range can only be wider — over-capturing is
+            // the safe direction for an audit.
+            let avg_seconds = match capture::average_block_seconds(chain, to_block).await {
+                Ok(seconds) => seconds,
                 Err(e) => {
-                    tracing::error!("cannot read block {to_block} timestamp: {e}");
+                    tracing::error!("cannot estimate block time: {e}");
                     return ExitCode::from(69);
                 }
             };
-            let old_time = match chain.block_timestamp(to_block - span).await {
-                Ok(time) => time,
-                Err(e) => {
-                    tracing::error!("cannot read block {} timestamp: {e}", to_block - span);
-                    return ExitCode::from(69);
-                }
-            };
-            let avg_seconds = tip_time.saturating_sub(old_time) / span;
-            let blocks = capture::blocks_for_window(minutes, avg_seconds.max(1));
-            window_note = format!(" window={minutes}m avg_block_s={} ", avg_seconds.max(1));
+            let blocks = capture::blocks_for_window(minutes, avg_seconds);
+            window_note = format!(" window={minutes}m avg_block_s={avg_seconds} ");
             if blocks < config.reconcile.search_lookback_blocks {
                 tracing::warn!(
                     captured_blocks = %blocks,
                     search_lookback_blocks = config.reconcile.search_lookback_blocks,
-                    "capture covers fewer blocks than scan will search; transfers outside the captured range will be reported as orphans — set RECON_LOOKBACK_BLOCKS close to the captured block count to align them"
+                    "capture covers fewer blocks than scan will search; transfers outside the captured range will be reported as orphans — run scan with --align-window or set RECON_LOOKBACK_BLOCKS to the captured block count"
                 );
             }
             to_block.saturating_sub(blocks)
