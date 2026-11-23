@@ -214,6 +214,29 @@ mod tests {
     }
 
     #[test]
+    fn the_three_views_agree_on_the_searched_range() {
+        let mut report = sample();
+        report.search.from_block = 700;
+        report.search.lookback_blocks = 300;
+        report.search.block_seconds = Some(886);
+        let text = to_text(&report);
+        let markdown = to_markdown(&report);
+        let json = to_json(&report).unwrap_or_default();
+        let expected = "700..1000 (300 blocks";
+        assert!(
+            text.contains(&format!("search={expected}, 886s/block)")),
+            "{text}"
+        );
+        assert!(
+            markdown.contains(&format!("searched blocks {expected}, 886s/block)")),
+            "{markdown}"
+        );
+        assert!(json.contains(r#""from_block": 700"#), "{json}");
+        assert!(json.contains(r#""lookback_blocks": 300"#), "{json}");
+        assert!(json.contains(r#""block_seconds": 886"#), "{json}");
+    }
+
+    #[test]
     fn exit_codes_distinguish_findings_from_pending() {
         let mut report = sample();
         assert_eq!(exit_code(&report, false), 1);
