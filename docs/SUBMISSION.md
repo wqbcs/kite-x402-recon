@@ -74,6 +74,11 @@ Evidence supplied for registration review:
 | 2026-11-23 | `23f0e8c` | `report.anchored`: mark a replayed audit instead of passing an old tip as live |
 | 2026-11-23 | `af1b11d` | docs: anchored field + replay example |
 | 2026-11-23 | `6550427` | test: anchored label asserted in all three views |
+| 2026-11-23 | `2c747ee` | docs: 57-test count and commit table |
+| 2026-11-23 | `1bd6d4c` | `serve`: `?at_block=` replays a past window over HTTP |
+| 2026-11-23 | `34da7be` | docs: HTTP replay contract + live evidence |
+| 2026-11-23 | `9bb566b` | cache the last eight block-time measurements |
+| 2026-11-23 | `9d116f8` | docs: multi-tip cache + 60-test count |
 
 ## 4. Test, build and lint results
 
