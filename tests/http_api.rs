@@ -104,6 +104,40 @@ fn reconcile_returns_the_same_summary_as_the_cli() {
     assert_eq!(response.1["search"]["block_seconds"], 12);
 }
 
+#[test]
+fn at_block_serves_a_replayed_window() {
+    let app = router(state(Some("s3cret")));
+    let response = match blocking_request(app, "/api/v1/reconcile?at_block=900", Some("s3cret")) {
+        Ok(response) => response,
+        Err(e) => panic!("{e}"),
+    };
+    assert_eq!(response.0, StatusCode::OK);
+    assert_eq!(response.1["chain_tip"], 900);
+    assert_eq!(response.1["anchored"], true);
+    assert_eq!(response.1["search"]["to_block"], 900);
+    assert_eq!(response.1["search"]["from_block"], 600);
+    assert_eq!(response.1["search"]["block_seconds"], 12);
+}
+
+#[test]
+fn at_block_rejects_bad_or_future_values() {
+    for (query, message) in [
+        ("?at_block=0", "positive integer"),
+        ("?at_block=abc", "positive integer"),
+        ("?at_block=99999", "ahead of the chain tip"),
+    ] {
+        let app = router(state(Some("s3cret")));
+        let path = format!("/api/v1/reconcile{query}");
+        let response = match blocking_request(app, &path, Some("s3cret")) {
+            Ok(response) => response,
+            Err(e) => panic!("{e}"),
+        };
+        assert_eq!(response.0, StatusCode::BAD_REQUEST, "{query}");
+        let body = response.1["error"].as_str().unwrap_or_default();
+        assert!(body.contains(message), "{query}: {body}");
+    }
+}
+
 fn blocking_request(
     app: axum::Router,
     path: &str,

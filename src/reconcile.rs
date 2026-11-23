@@ -90,6 +90,11 @@ impl Reconciler {
         self.chain.chain_id()
     }
 
+    /// The chain tip right now, regardless of any anchor.
+    pub async fn current_tip(&self) -> Result<u64> {
+        self.chain.tip().await
+    }
+
     /// Override how far back the chain window is searched.
     ///
     /// The configured value is in blocks, which only matches a wall-clock audit

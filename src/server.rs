@@ -1,9 +1,10 @@
 //! Read-only HTTP API. `serve` is for dashboards and cron probes; it never
 //! mutates anything and runs the same reconciler as the CLI.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
@@ -54,12 +55,41 @@ async fn healthz(State(state): State<AppState>) -> Response {
     (StatusCode::OK, Json(body)).into_response()
 }
 
-async fn reconcile(State(state): State<AppState>, headers: HeaderMap) -> Response {
+async fn reconcile(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(params): Query<HashMap<String, String>>,
+) -> Response {
     if let Some(response) = authorize(&state, &headers) {
         return response;
     }
+    // A shared reconciler serves the live tip; an anchored read clones it so
+    // one request can ask about a past window without affecting the others.
+    let mut reconciler = (*state.reconciler).clone();
+    if let Some(raw) = params.get("at_block") {
+        let block = match raw.parse::<u64>() {
+            Ok(block) if block > 0 => block,
+            _ => {
+                return error_response(
+                    StatusCode::BAD_REQUEST,
+                    "at_block must be a positive integer",
+                )
+            }
+        };
+        let tip = match reconciler.current_tip().await {
+            Ok(tip) => tip,
+            Err(e) => return error_response(StatusCode::BAD_GATEWAY, &e.to_string()),
+        };
+        if block > tip {
+            return error_response(
+                StatusCode::BAD_REQUEST,
+                &format!("at_block {block} is ahead of the chain tip {tip}"),
+            );
+        }
+        reconciler = reconciler.with_anchor_tip(block);
+    }
     let now = now_unix();
-    match state.reconciler.report(&*state.ledger, now).await {
+    match reconciler.report(&*state.ledger, now).await {
         Ok(report) => {
             let body = crate::report::to_json(&report).unwrap_or_else(|e| {
                 json!({ "error": format!("failed to serialise report: {e}") }).to_string()
