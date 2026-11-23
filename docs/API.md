@@ -98,7 +98,8 @@ Field notes:
 - `serve` builds its reconciler from the same config as the CLI, so window alignment applies here
   too: a `window_minutes=60` deployment searches what an hour actually covers on that chain rather
   than the raw `search_lookback_blocks` default (2000 blocks ≈ 20 days on Kite testnet). The
-  measurement is cached per tip, so repeated requests do not each pay for two block reads.
+  measurement is cached for the last eight tips, so repeated live and replayed requests do not each
+  pay for two block reads.
 - `outcome` ∈ `matched | pending | mismatched | failed | unknown`.
 - `recovered_by` appears only when the log-search path produced the match (`"log_search"`).
 - `tx_hash`, `payer`, `block_number`, `confirmations` are omitted when not applicable.
