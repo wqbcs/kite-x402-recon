@@ -36,8 +36,11 @@ receiver = "0x2222222222222222222222222222222222222222"
 # Records observed earlier than this are reported as unknown in live mode.
 window_minutes = 60
 max_records = 500
-# Blocks scanned backwards from the tip when a record has no tx hash.
+# Blocks scanned backwards from the tip when alignment is off. Ignored otherwise.
 search_lookback_blocks = 2000
+# Derive the searched range from window_minutes and the chain's measured block
+# time. On by default; set false only if the extra block probe is rate-limited.
+align_window = true
 
 [server]
 bind = "127.0.0.1:8081"

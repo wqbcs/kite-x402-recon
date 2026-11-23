@@ -60,24 +60,28 @@ fn scan_reports_every_fixture_outcome() {
 fn report_states_which_blocks_were_searched() {
     let output = run(&["--config", "recon.example.toml", "scan", "--format", "json"]);
     let report = json_of(&output);
-    // Fixture tip 1000 with the default 2000-block lookback clamps at block 0.
-    assert_eq!(report["search"]["from_block"], 0);
-    assert_eq!(report["search"]["to_block"], 1000);
-    assert_eq!(report["search"]["lookback_blocks"], 2000);
-
-    // 60 minutes at the fixture's 12 s/block is 300 blocks, so alignment must
-    // narrow the reported range instead of leaving the reader to guess.
-    let aligned = run(&[
-        "--config",
-        "recon.example.toml",
-        "scan",
-        "--format",
-        "json",
-        "--align-window",
-    ]);
-    let report = json_of(&aligned);
+    // Alignment is on by default: 60 minutes at the fixture's 12 s/block is 300
+    // blocks, so the range must be derived rather than left at the 2000-block
+    // default.
     assert_eq!(report["search"]["from_block"], 700);
+    assert_eq!(report["search"]["to_block"], 1000);
     assert_eq!(report["search"]["lookback_blocks"], 300);
+    assert_eq!(report["search"]["block_seconds"], 12);
+
+    // The configured lookback stays available as an explicit escape hatch.
+    let unaligned = Command::new(env!("CARGO_BIN_EXE_recon"))
+        .args(["--config", "recon.example.toml", "scan", "--format", "json"])
+        .env("RECON_ALIGN_WINDOW", "false")
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .output();
+    let unaligned = match unaligned {
+        Ok(output) => output,
+        Err(e) => panic!("cannot run recon: {e}"),
+    };
+    let report = json_of(&unaligned);
+    assert_eq!(report["search"]["from_block"], 0);
+    assert_eq!(report["search"]["lookback_blocks"], 2000);
+    assert!(report["search"]["block_seconds"].is_null());
 }
 
 #[test]

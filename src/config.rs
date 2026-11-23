@@ -109,7 +109,12 @@ pub struct ReconcileConfig {
     pub window_minutes: u64,
     pub max_records: usize,
     /// Blocks scanned backwards from the tip when a record carries no tx hash.
+    /// Ignored when `align_window` is on.
     pub search_lookback_blocks: u64,
+    /// Search the block range `window_minutes` actually covers, measured from the
+    /// chain. On by default: a lookback in blocks is misleading without the block
+    /// time, and a month-wide sweep is not what "audit the last day" means.
+    pub align_window: bool,
 }
 
 impl Default for ReconcileConfig {
@@ -119,6 +124,7 @@ impl Default for ReconcileConfig {
             window_minutes: 60,
             max_records: 500,
             search_lookback_blocks: 2_000,
+            align_window: true,
         }
     }
 }
@@ -240,6 +246,11 @@ impl Config {
         if let Some(value) = env("RECON_LOOKBACK_BLOCKS") {
             self.reconcile.search_lookback_blocks = value.parse().map_err(|_| {
                 ReconError::Config("RECON_LOOKBACK_BLOCKS must be an integer".into())
+            })?;
+        }
+        if let Some(value) = env("RECON_ALIGN_WINDOW") {
+            self.reconcile.align_window = parse_bool(&value).ok_or_else(|| {
+                ReconError::Config("RECON_ALIGN_WINDOW must be true or false".into())
             })?;
         }
         if let Some(value) = env("RECON_MAX_RECORDS") {
@@ -387,6 +398,15 @@ impl std::fmt::Display for LedgerKind {
 
 fn env(name: &str) -> Option<String> {
     std::env::var(name).ok()
+}
+
+/// Accept the spellings operators actually type, instead of only `true`/`false`.
+fn parse_bool(value: &str) -> Option<bool> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "on" => Some(true),
+        "0" | "false" | "no" | "off" => Some(false),
+        _ => None,
+    }
 }
 
 fn require_http_url(field: &str, value: &str) -> Result<()> {

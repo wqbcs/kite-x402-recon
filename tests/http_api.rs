@@ -34,16 +34,20 @@ fn state(token: Option<&str>) -> AppState {
         .filter_map(|line| serde_json::from_str(line).ok())
         .collect::<Vec<_>>();
     AppState {
-        reconciler: Arc::new(Reconciler::new(
-            Arc::new(fixture),
-            "0x2222222222222222222222222222222222222222",
-            "",
-            60,
-            1,
-            2000,
-            500,
-            "mock",
-        )),
+        reconciler: Arc::new(
+            Reconciler::new(
+                Arc::new(fixture),
+                "0x2222222222222222222222222222222222222222",
+                "",
+                60,
+                1,
+                2000,
+                500,
+                "mock",
+            )
+            // Mirror what `reconciler_from_config` does for a served instance.
+            .with_alignment(true),
+        ),
         ledger: Arc::new(MemoryLedger::new(records)),
         token: token.map(str::to_string),
         mode: "mock".to_string(),
@@ -94,6 +98,10 @@ fn reconcile_returns_the_same_summary_as_the_cli() {
     assert_eq!(response.1["summary"]["total"], 7);
     assert_eq!(response.1["summary"]["matched"], 2);
     assert_eq!(response.1["summary"]["orphans"], 1);
+    // The HTTP path goes through the same config as the CLI, so it inherits
+    // window alignment instead of reporting a different scope.
+    assert_eq!(response.1["search"]["lookback_blocks"], 300);
+    assert_eq!(response.1["search"]["block_seconds"], 12);
 }
 
 fn blocking_request(

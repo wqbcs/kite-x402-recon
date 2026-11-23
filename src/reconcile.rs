@@ -26,6 +26,12 @@ pub struct Reconciler {
     min_confirmations: u64,
     lookback_blocks: u64,
     max_records: usize,
+    /// Derive the searched range from `window_minutes` and the chain's measured
+    /// block time instead of trusting `lookback_blocks`.
+    align_window: bool,
+    /// Filled in when alignment ran, so the report can state the measurement it
+    /// used instead of only the resulting range.
+    measured_block_seconds: Option<u64>,
     mode: String,
 }
 
@@ -37,6 +43,7 @@ impl std::fmt::Debug for Reconciler {
             .field("window_minutes", &self.window_minutes)
             .field("min_confirmations", &self.min_confirmations)
             .field("lookback_blocks", &self.lookback_blocks)
+            .field("align_window", &self.align_window)
             .field("max_records", &self.max_records)
             .field("mode", &self.mode)
             .finish_non_exhaustive()
@@ -63,6 +70,8 @@ impl Reconciler {
             min_confirmations: min_confirmations.max(1),
             lookback_blocks: lookback_blocks.max(1),
             max_records: max_records.max(1),
+            align_window: false,
+            measured_block_seconds: None,
             mode: mode.into(),
         }
     }
@@ -82,12 +91,66 @@ impl Reconciler {
         self
     }
 
+    /// Search the range `window_minutes` actually covers, measured from the chain.
+    ///
+    /// A lookback in blocks means nothing without the block time: 2000 blocks is
+    /// hours on a fast chain and weeks on a slow one, and when it is weeks every
+    /// audit drowns in transfers that settled long before the window opened.
+    pub fn with_alignment(mut self, aligned: bool) -> Self {
+        self.align_window = aligned;
+        self
+    }
+
+    /// Resolve the block range for this pass, measuring the chain when aligned.
+    ///
+    /// A failed measurement must not fail the audit: falling back to the
+    /// configured lookback keeps the run useful and the report still states the
+    /// range it used.
+    async fn effective(self) -> Self {
+        if !self.align_window {
+            return self;
+        }
+        let tip = match self.chain.tip().await {
+            Ok(tip) => tip,
+            Err(e) => {
+                tracing::warn!("cannot align window, keeping the configured lookback: {e}");
+                return self;
+            }
+        };
+        let seconds = match crate::capture::average_block_seconds(&*self.chain, tip).await {
+            Ok(seconds) => seconds,
+            Err(e) => {
+                tracing::warn!("cannot measure block time, keeping the configured lookback: {e}");
+                return self;
+            }
+        };
+        let blocks = crate::capture::blocks_for_window(self.window_minutes, seconds);
+        tracing::debug!(
+            window_minutes = self.window_minutes,
+            avg_block_s = seconds,
+            lookback_blocks = %blocks,
+            configured_lookback_blocks = self.lookback_blocks,
+            "aligned the searched range to the measured block time"
+        );
+        self.with_lookback_blocks(blocks)
+            .with_measured_block_seconds(seconds)
+    }
+
+    fn with_measured_block_seconds(mut self, seconds: u64) -> Self {
+        self.measured_block_seconds = Some(seconds);
+        self
+    }
+
     /// Run one reconciliation pass at `now` (unix seconds).
     pub async fn report(
         &self,
         ledger: &(dyn LedgerSource + Send + Sync),
         now: i64,
     ) -> Result<Report> {
+        self.clone().effective().await.pass(ledger, now).await
+    }
+
+    async fn pass(&self, ledger: &(dyn LedgerSource + Send + Sync), now: i64) -> Result<Report> {
         let tip = self.chain.tip().await?;
         let mut records = ledger.fetch().await?;
         records.truncate(self.max_records);
@@ -129,6 +192,7 @@ impl Reconciler {
                 from_block: tip.saturating_sub(self.lookback_blocks),
                 to_block: tip,
                 lookback_blocks: self.lookback_blocks,
+                block_seconds: self.measured_block_seconds,
             },
             summary,
             records: findings,
@@ -669,6 +733,30 @@ mod tests {
         };
         assert_eq!(report.records[0].outcome, Outcome::Unknown);
         assert!(report.records[0].reason.contains("window"));
+    }
+
+    #[test]
+    fn alignment_derives_the_range_from_the_fixture_clock() {
+        let old = "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+        let chain = in_memory(
+            2368,
+            1_000,
+            vec![],
+            vec![transfer(old, 100, PAYER, RECEIVER, 5_000)],
+        );
+        let ledger = MemoryLedger::new(vec![]);
+        // 60 minutes at the fixture's 12 s/block is 300 blocks: block 100 is
+        // outside it, so the transfer is not an orphan of this window.
+        let aligned = reconciler(chain, 1).with_alignment(true);
+        let report = block_on(aligned.report(&ledger, now()));
+        let report = match report {
+            Ok(r) => r,
+            Err(e) => panic!("reconcile failed: {e}"),
+        };
+        assert_eq!(report.search.lookback_blocks, 300);
+        assert_eq!(report.search.from_block, 700);
+        assert_eq!(report.search.block_seconds, Some(12));
+        assert_eq!(report.orphans.len(), 0);
     }
 
     #[test]

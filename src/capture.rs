@@ -23,7 +23,10 @@ pub const BLOCK_TIME_SAMPLE: u64 = 1000;
 /// about 20 days rather than the ~7 hours the default assumed. Flooring a
 /// sub-second average and rounding the derived block count up can only widen a
 /// window, which is the safe direction for an audit.
-pub async fn average_block_seconds(chain: &dyn ChainClient, tip: u64) -> Result<u64> {
+pub async fn average_block_seconds<C>(chain: &C, tip: u64) -> Result<u64>
+where
+    C: ChainClient + Send + Sync + ?Sized,
+{
     let span = BLOCK_TIME_SAMPLE.min(tip);
     if span == 0 {
         return Err(ReconError::Chain(

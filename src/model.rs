@@ -147,6 +147,9 @@ pub struct SearchWindow {
     pub from_block: u64,
     pub to_block: u64,
     pub lookback_blocks: u64,
+    /// Average block time the range was derived from. `None` means the range came
+    /// from the configured lookback, not from a measurement.
+    pub block_seconds: Option<u64>,
 }
 
 /// Full report returned by `scan` and `/api/v1/reconcile`.

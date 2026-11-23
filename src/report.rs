@@ -16,7 +16,7 @@ pub fn to_text(report: &Report) -> String {
     let mut out = String::new();
     let _ = writeln!(
         out,
-        "mode={} chain_id={} tip={} window={}m search={}..{} ({} blocks) generated_at={}",
+        "mode={} chain_id={} tip={} window={}m search={}..{} ({} blocks{}) generated_at={}",
         report.mode,
         report.chain_id,
         report.chain_tip,
@@ -24,6 +24,10 @@ pub fn to_text(report: &Report) -> String {
         report.search.from_block,
         report.search.to_block,
         report.search.lookback_blocks,
+        match report.search.block_seconds {
+            Some(seconds) => format!(", {seconds}s/block"),
+            None => String::new(),
+        },
         report.generated_at
     );
     let s = &report.summary;
@@ -65,14 +69,18 @@ pub fn to_markdown(report: &Report) -> String {
     let mut out = String::new();
     let _ = writeln!(
         out,
-        "> `{}` chain {} · tip {} · audit window {}m · searched blocks {}..{} ({} blocks)",
+        "> `{}` chain {} · tip {} · audit window {}m · searched blocks {}..{} ({} blocks{})",
         report.mode,
         report.chain_id,
         report.chain_tip,
         report.window_minutes,
         report.search.from_block,
         report.search.to_block,
-        report.search.lookback_blocks
+        report.search.lookback_blocks,
+        match report.search.block_seconds {
+            Some(seconds) => format!(", {seconds}s/block"),
+            None => String::new(),
+        }
     );
     let _ = writeln!(out);
     let _ = writeln!(out, "| outcome | id | amount | tx | reason |");
@@ -142,6 +150,7 @@ mod tests {
                 from_block: 0,
                 to_block: 1000,
                 lookback_blocks: 2000,
+                block_seconds: None,
             },
             summary: Summary {
                 total: 1,
@@ -194,6 +203,14 @@ mod tests {
         let markdown = to_markdown(&report);
         assert!(markdown.contains("MISMATCH"));
         assert!(markdown.contains("searched blocks 0..1000"));
+    }
+
+    #[test]
+    fn text_states_the_measured_block_time_when_aligned() {
+        let mut report = sample();
+        report.search.block_seconds = Some(886);
+        assert!(to_text(&report).contains("886s/block"));
+        assert!(!to_text(&sample()).contains("s/block"));
     }
 
     #[test]

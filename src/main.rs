@@ -161,7 +161,7 @@ async fn run(cli: Cli) -> ExitCode {
     }
 }
 
-async fn probe(config: &Config, chain: &dyn ChainClient, json: bool) -> ExitCode {
+async fn probe(config: &Config, chain: &(dyn ChainClient + Send + Sync), json: bool) -> ExitCode {
     let tip = match chain.tip().await {
         Ok(tip) => tip,
         Err(e) => {
@@ -245,34 +245,10 @@ async fn scan(
         }
     };
     let mut reconciler = reconciler_from_config(config, chain.clone());
-    if align_window {
-        // The configured lookback is in blocks, the audit window in minutes.
-        // Measuring the chain's block time is the only way to make those two
-        // describe the same period, and without it a slow chain silently turns
-        // a one-day audit into a month-long orphan sweep.
-        let tip = match chain.tip().await {
-            Ok(tip) => tip,
-            Err(e) => {
-                tracing::error!("chain probe failed: {e}");
-                return ExitCode::from(69);
-            }
-        };
-        let avg_seconds = match capture::average_block_seconds(&*chain, tip).await {
-            Ok(seconds) => seconds,
-            Err(e) => {
-                tracing::error!("cannot estimate block time: {e}");
-                return ExitCode::from(69);
-            }
-        };
-        let blocks = capture::blocks_for_window(config.reconcile.window_minutes, avg_seconds);
-        tracing::info!(
-            window_minutes = config.reconcile.window_minutes,
-            avg_block_s = avg_seconds,
-            lookback_blocks = %blocks,
-            configured_lookback_blocks = config.reconcile.search_lookback_blocks,
-            "window aligned to the chain's measured block time"
-        );
-        reconciler = reconciler.with_lookback_blocks(blocks);
+    if align_window && !config.reconcile.align_window {
+        // Alignment is on by default via config; the flag still forces it for a
+        // single run, because an operator passing it means what it says.
+        reconciler = reconciler.with_alignment(true);
     }
     let result = reconciler.report(&*ledger, now_unix()).await;
     let report = match result {
@@ -325,7 +301,7 @@ async fn scan(
 /// it like any other batch.
 async fn capture_ledger(
     config: &Config,
-    chain: &dyn ChainClient,
+    chain: &(dyn ChainClient + Send + Sync),
     from_block: Option<u64>,
     to_block: Option<u64>,
     window_minutes: Option<u64>,
@@ -368,7 +344,7 @@ async fn capture_ledger(
                 tracing::warn!(
                     captured_blocks = %blocks,
                     search_lookback_blocks = config.reconcile.search_lookback_blocks,
-                    "capture covers fewer blocks than scan will search; transfers outside the captured range will be reported as orphans — run scan with --align-window or set RECON_LOOKBACK_BLOCKS to the captured block count"
+                    "capture covers fewer blocks than the configured fixed lookback; scan searches that range and will report transfers outside the captured range as orphans — alignment (the default) removes this mismatch, or set RECON_LOOKBACK_BLOCKS to the captured block count"
                 );
             }
             to_block.saturating_sub(blocks)

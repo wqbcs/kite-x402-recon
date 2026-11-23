@@ -72,6 +72,7 @@ pub fn reconciler_from_config(
         config.reconcile.max_records,
         mode_label(config),
     )
+    .with_alignment(config.reconcile.align_window)
 }
 
 /// `live` or `mock`, surfaced in every report.
