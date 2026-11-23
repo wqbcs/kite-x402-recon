@@ -63,7 +63,7 @@ Evidence supplied for registration review:
 
 | Check | Command | Result |
 | --- | --- | --- |
-| Tests | `cargo test --all-targets` | 53 passed (42 unit, 8 CLI black-box, 3 HTTP), 0 failed |
+| Tests | `cargo test --all-targets` | 55 passed (43 unit, 9 CLI black-box, 3 HTTP), 0 failed |
 | Lints | `cargo clippy --all-targets -- -D warnings` | clean |
 | Format | `cargo fmt --all --check` | clean |
 | Docs | `cargo doc --no-deps` | no warnings |

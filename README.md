@@ -99,7 +99,9 @@ default for every surface (`scan`, `report`, `serve`): block ranges are derived 
 measured block time (~886 s on testnet, 898 s a day later), so a wall-clock audit window and a
 block range cannot drift apart. `RECON_ALIGN_WINDOW=false` (or `align_window = false` in the config)
 restores the fixed `search_lookback_blocks` when you deliberately want a wider sweep; the
-`--align-window` flag forces alignment back on for a single run.
+`--align-window` flag forces alignment back on for a single run. `scan --at-block N` pins the
+whole audit to a past block (range, orphans, confirmations), so a verdict you published can be
+replayed after the chain has moved on.
 - **Ecosystem fit**: reconciles the settlement records produced by the x402 gateway flow used by
   `kite-x402-axum` and the other reference projects. The report shape is designed to be consumed
   next to a gateway's own ledger export — see [`fixtures/ledger.jsonl`](fixtures/ledger.jsonl) for

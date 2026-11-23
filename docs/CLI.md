@@ -43,6 +43,7 @@ Reconciles one ledger batch.
 | `--format text\|json\|markdown` | `text` | Output rendering. |
 | `--strict` | off | Exit `2` when anything is `pending`. |
 | `--out <path>` | – | Also write the rendered report to this file. |
+| `--at-block <n>` | current tip | Audit as of this block: the aligned range, orphan scan and confirmation counts all move with it, so a past window can be replayed later with the same verdicts. Refused (`78`) when ahead of the tip. |
 | `--align-window` | on | Force alignment for this run: search a block range derived from `reconcile.window_minutes` and the chain's measured block time instead of `reconcile.search_lookback_blocks`. Only needed when config or `RECON_ALIGN_WINDOW` turned it off. |
 | `--config` | see above | Configuration. |
 

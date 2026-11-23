@@ -9,7 +9,7 @@ checkout of `main` on 2026-11-22.
 | --- | --- | --- |
 | Format | `cargo fmt --all --check` | clean |
 | Lints | `cargo clippy --all-targets -- -D warnings` | clean |
-| Tests | `cargo test --all-targets` | 53 passed (42 unit, 4 capture CLI, 4 scan CLI, 3 HTTP), 0 failed |
+| Tests | `cargo test --all-targets` | 55 passed (43 unit, 4 capture CLI, 5 scan CLI, 3 HTTP), 0 failed |
 | Docs | `cargo doc --no-deps` | no warnings |
 | CI | GitHub Actions `CI` on push `418a69c` | #3 completed successfully (2m 2s): fmt+clippy+test on ubuntu-latest ✅, windows-latest ✅, rustdoc ✅ |
 
@@ -163,6 +163,24 @@ records as outside the window (`unknown`, reason stated) rather than searching a
 history — the day-old capture and today's window genuinely do not overlap, and the report says so
 instead of guessing. `tests/http_api.rs` asserts the served report carries the same `search`
 range and `block_seconds` as the CLI path.
+
+## Replaying a past window (2026-11-23)
+
+`scan --at-block` was added so a published verdict does not rot as the chain advances. The
+24-hour run recorded above (tip `22045335`, 98 blocks, 886 s/block) was replayed hours later,
+with both captured records in the ledger:
+
+```
+$ RECON_WINDOW_MINUTES=1440 RECON_LEDGER_PATH=fixtures/kite_testnet_capture.jsonl \
+  recon scan --format text --at-block 22045335
+mode=live chain_id=2368 tip=22045335 window=1440m search=22045237..22045335 (98 blocks, 886s/block)
+total=2 matched=2 pending=0 mismatched=0 failed=0 unknown=0 orphans=0 duplicates=0
+```
+
+The live tip had meanwhile moved to `22045342` and measured 898 s/block, yet the anchored run
+reproduces the same range **and the same 886 s/block**, because the anchor pins the block the
+measurement is taken at. Without it the same command today searches 5 blocks and reports both
+records as outside the window. An audit claim that cannot be replayed is not evidence.
 
 The report states the searched range it drew its verdicts from (`search=22045237..22045335`,
 98 blocks). Without that line a reader cannot separate "the money is missing" from "the search
