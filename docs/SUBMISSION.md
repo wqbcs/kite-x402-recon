@@ -51,17 +51,23 @@ Evidence supplied for registration review:
 | 2026-11-22 | `f049c26` | CI evidence refreshed |
 | 2026-11-22 | `0f46f95` | `recon capture`: rebuild a ledger from chain transfers |
 | 2026-11-22 | `072d869` | capture docs + real testnet capture fixture |
+| 2026-11-22 | `50d05a2` | `chore(release): 0.2.0` + this submission record |
 | 2026-11-22 | `v0.2.0` tag | release marker for the above |
+| 2026-11-23 | `e851ce7` | `capture --window-minutes`: derive the block range from the audit window |
+| 2026-11-23 | `6b651a7` | docs: window-aligned capture + the measured 886 s/block finding |
+| 2026-11-23 | `93e67be` | `scan --align-window`: search the range the window actually covers |
+| 2026-11-23 | `42c4139` | docs: aligned vs unaligned run (15 orphans → 0) in EVIDENCE |
+| 2026-11-23 | `v0.3.0` tag | release marker for window alignment |
 
 ## 4. Test, build and lint results
 
 | Check | Command | Result |
 | --- | --- | --- |
-| Tests | `cargo test --all-targets` | 43 passed (35 unit, 5 CLI black-box, 3 HTTP), 0 failed |
+| Tests | `cargo test --all-targets` | 49 passed (39 unit, 7 CLI black-box, 3 HTTP), 0 failed |
 | Lints | `cargo clippy --all-targets -- -D warnings` | clean |
 | Format | `cargo fmt --all --check` | clean |
 | Docs | `cargo doc --no-deps` | no warnings |
-| CI | GitHub Actions `CI` (ubuntu-latest + windows-latest) | green on `418a69c`; runs listed under Actions |
+| CI | GitHub Actions `CI` (ubuntu-latest + windows-latest) | green on `42c4139`: <https://github.com/wqbcs/kite-x402-recon/actions/runs/45097642882> |
 
 ## 5. Runnable demonstration
 
@@ -93,6 +99,24 @@ The second command verifies both real settlements against real receipts. The 14 
 transfers inside the 60-minute audit window that fell outside the 150-block capture range — the
 "money arrived, ledger has no record" case. Details and raw outputs:
 [`EVIDENCE.md`](EVIDENCE.md).
+
+Window-aligned variant (2026-11-23, tip `22045335`), which removes the unit mismatch instead of
+relying on the operator to tune `search_lookback_blocks` by hand:
+
+```bash
+RECON_CHAIN_MODE=live \
+RECON_TOKEN_ADDRESS=0x0fF5393387ad2f9f691FD6Fd28e07E3969e27e63 \
+cargo run -- --config recon.example.toml capture --window-minutes 1440 \
+  --receiver 0x66336f24e38b5b155cd3b50f635b1bb0f1098b1d --out /tmp/captured-24h.jsonl
+# mode=live chain_id=2368 blocks=22045237..22045335 window=1440m avg_block_s=886 records=1
+
+RECON_WINDOW_MINUTES=1440 RECON_LEDGER_PATH=/tmp/captured-24h.jsonl \
+cargo run -- --config recon.example.toml scan --align-window --format text
+# total=1 matched=1 ... orphans=0
+```
+
+The same ledger scanned with the fixed 2000-block lookback reports `orphans=15`; every one of
+those transfers settled weeks before the 24-hour window opened.
 
 ## 6. Scope and boundaries (for reviewers)
 

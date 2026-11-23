@@ -5,16 +5,26 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.3.0] - 2026-11-23
+
+Audit windows and block ranges now describe the same period. Both new flags measure the chain's
+own block time instead of assuming one, because a lookback expressed in blocks is meaningless
+without it: Kite testnet averaged **886 s/block** on this date, so the 2000-block default reached
+back roughly 20 days.
+
 ### Added
 
 - `capture --window-minutes <n>`: derive the block range from an audit window using the chain's
   measured block time (`eth_getBlockByNumber` at the tip and up to 1000 blocks back), rounding up
   so the range is never short. Conflicts with `--from-block`. A warning is logged when `scan` will
-  search a wider range than was captured. Verified live on Kite testnet, where the measurement
-  returned ~886 s/block and a 24-hour window mapped to 97 blocks.
+  search a wider range than was captured.
 - `scan --align-window`: search the block range that `reconcile.window_minutes` actually covers,
   measured from the chain, instead of the fixed `search_lookback_blocks`. The same 24-hour testnet
   ledger reported 15 orphans unaligned and 0 aligned — the 15 were old money outside the window.
+- `capture::average_block_seconds` and `Reconciler::with_lookback_blocks` as library entry points,
+  so a caller embedding this crate can align its own ranges the same way.
 
 ## [0.2.0] - 2026-11-22
 
