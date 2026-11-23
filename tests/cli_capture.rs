@@ -83,6 +83,55 @@ fn capture_writes_a_ledger_the_scanner_accepts() {
 }
 
 #[test]
+fn capture_aligns_an_audit_window_with_the_chain_block_time() {
+    let path = std::env::temp_dir().join("recon-cli-capture-window.jsonl");
+    let _ = std::fs::remove_file(&path);
+    let path_arg = path.to_string_lossy().to_string();
+
+    let output = run(&[
+        "--config",
+        "recon.example.toml",
+        "capture",
+        "--window-minutes",
+        "60",
+        "--out",
+        &path_arg,
+    ]);
+    assert!(output.status.success(), "window capture exited non-zero");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Fixture chain uses deterministic 12 s blocks, so 60 minutes is 300 blocks.
+    assert!(stdout.contains("window=60m"), "stdout was: {stdout}");
+    assert!(stdout.contains("blocks=700..1000"), "stdout was: {stdout}");
+    assert!(stdout.contains("records=4"), "stdout was: {stdout}");
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn capture_refuses_two_range_sources_at_once() {
+    let path = std::env::temp_dir().join("recon-cli-capture-conflict.jsonl");
+    let path_arg = path.to_string_lossy().to_string();
+    let output = run(&[
+        "--config",
+        "recon.example.toml",
+        "capture",
+        "--from-block",
+        "900",
+        "--window-minutes",
+        "60",
+        "--out",
+        &path_arg,
+    ]);
+    assert!(
+        !output.status.success(),
+        "conflicting range flags must fail"
+    );
+    assert!(
+        !std::path::Path::new(&path_arg).exists(),
+        "no file on failure"
+    );
+}
+
+#[test]
 fn capture_rejects_a_inverted_block_range() {
     let path = std::env::temp_dir().join("recon-cli-capture-bad.jsonl");
     let path_arg = path.to_string_lossy().to_string();

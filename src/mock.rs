@@ -82,6 +82,11 @@ pub struct FixtureChain {
     transfers: Vec<Transfer>,
 }
 
+/// Synthetic block clock for the fixture chain: 12 s per block from a fixed
+/// genesis, so window→block arithmetic is reproducible in tests.
+pub const MOCK_BLOCK_SECONDS: u64 = 12;
+pub const MOCK_GENESIS_UNIX: u64 = 1_700_000_000;
+
 impl FixtureChain {
     pub fn load(path: &Path) -> Result<Self> {
         let raw = std::fs::read_to_string(path)?;
@@ -162,6 +167,20 @@ impl ChainClient for FixtureChain {
 
     fn token_symbol<'a>(&'a self) -> BoxFuture<'a, Result<String>> {
         Box::pin(async move { Ok(self.symbol.clone()) })
+    }
+
+    fn block_timestamp<'a>(&'a self, number: u64) -> BoxFuture<'a, Result<u64>> {
+        Box::pin(async move {
+            if number > self.tip {
+                return Err(ReconError::Chain(format!(
+                    "block {number} is past the fixture tip {}",
+                    self.tip
+                )));
+            }
+            // Deterministic 12 s blocks so window→range arithmetic is testable
+            // without inventing real timestamps.
+            Ok(MOCK_GENESIS_UNIX + number.saturating_mul(MOCK_BLOCK_SECONDS))
+        })
     }
 }
 

@@ -55,6 +55,10 @@ enum Command {
         /// Last block, inclusive. Defaults to the current tip.
         #[arg(long)]
         to_block: Option<u64>,
+        /// Derive `from_block` from an audit window, using the chain's own block
+        /// time instead of a fixed lookback. Conflicts with `--from-block`.
+        #[arg(long, conflicts_with = "from_block")]
+        window_minutes: Option<u64>,
         /// Only keep transfers paid to this address. Defaults to the configured receiver.
         #[arg(long)]
         receiver: Option<String>,
@@ -133,6 +137,7 @@ async fn run(cli: Cli) -> ExitCode {
         Command::Capture {
             from_block,
             to_block,
+            window_minutes,
             receiver,
             out,
         } => {
@@ -141,6 +146,7 @@ async fn run(cli: Cli) -> ExitCode {
                 chain.as_ref(),
                 from_block,
                 to_block,
+                window_minutes,
                 receiver,
                 &out,
             )
@@ -273,6 +279,7 @@ async fn capture_ledger(
     chain: &dyn ChainClient,
     from_block: Option<u64>,
     to_block: Option<u64>,
+    window_minutes: Option<u64>,
     receiver: Option<String>,
     out: &std::path::Path,
 ) -> ExitCode {
@@ -285,7 +292,51 @@ async fn capture_ledger(
     };
     let to_block = to_block.unwrap_or(tip);
     let lookback = config.reconcile.search_lookback_blocks.max(1);
-    let from_block = from_block.unwrap_or_else(|| to_block.saturating_sub(lookback));
+    let mut window_note = String::new();
+    let from_block = match (from_block, window_minutes) {
+        (Some(_), Some(_)) => {
+            tracing::error!("--from-block and --window-minutes are mutually exclusive");
+            return ExitCode::from(78);
+        }
+        (Some(from), None) => from,
+        (None, None) => to_block.saturating_sub(lookback),
+        (None, Some(minutes)) => {
+            // Measure the chain's own block time instead of assuming one, so a
+            // 60-minute audit window maps to the right number of blocks on any
+            // chain. Integer division floors the average, which can only widen
+            // the range — over-capturing is the safe direction.
+            let span = 1000u64.min(to_block);
+            if span == 0 {
+                tracing::error!("cannot estimate block time at block 0; pass --from-block instead");
+                return ExitCode::from(78);
+            }
+            let tip_time = match chain.block_timestamp(to_block).await {
+                Ok(time) => time,
+                Err(e) => {
+                    tracing::error!("cannot read block {to_block} timestamp: {e}");
+                    return ExitCode::from(69);
+                }
+            };
+            let old_time = match chain.block_timestamp(to_block - span).await {
+                Ok(time) => time,
+                Err(e) => {
+                    tracing::error!("cannot read block {} timestamp: {e}", to_block - span);
+                    return ExitCode::from(69);
+                }
+            };
+            let avg_seconds = tip_time.saturating_sub(old_time) / span;
+            let blocks = capture::blocks_for_window(minutes, avg_seconds.max(1));
+            window_note = format!(" window={minutes}m avg_block_s={} ", avg_seconds.max(1));
+            if blocks < config.reconcile.search_lookback_blocks {
+                tracing::warn!(
+                    captured_blocks = %blocks,
+                    search_lookback_blocks = config.reconcile.search_lookback_blocks,
+                    "capture covers fewer blocks than scan will search; transfers outside the captured range will be reported as orphans — set RECON_LOOKBACK_BLOCKS close to the captured block count to align them"
+                );
+            }
+            to_block.saturating_sub(blocks)
+        }
+    };
     if from_block > to_block {
         tracing::error!("from_block {from_block} is above to_block {to_block}");
         return ExitCode::from(78);
@@ -328,7 +379,7 @@ async fn capture_ledger(
         return ExitCode::from(73);
     }
     let line = format!(
-        "mode={} chain_id={} blocks={from_block}..{to_block} receiver={receiver} records={} out={}\n",
+        "mode={} chain_id={} blocks={from_block}..{to_block}{window_note}receiver={receiver} records={} out={}\n",
         mode_label(config),
         config.chain.chain_id,
         records.len(),

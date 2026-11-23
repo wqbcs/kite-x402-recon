@@ -12,6 +12,17 @@ use crate::chain::Transfer;
 use crate::error::Result;
 use crate::model::LedgerRecord;
 
+/// Blocks needed to cover a wall-clock window at a measured block time.
+///
+/// `avg_block_seconds` must be at least 1; callers clamp a measured 0 or
+/// sub-second average before calling. The result is rounded up: half a block
+/// short would hide a transfer that settled right at the window edge.
+pub fn blocks_for_window(window_minutes: u64, avg_block_seconds: u64) -> u64 {
+    let seconds = window_minutes.saturating_mul(60);
+    let per_block = avg_block_seconds.max(1);
+    seconds.div_ceil(per_block).max(1)
+}
+
 /// Turn decoded transfers into ledger records.
 ///
 /// `observed_at` is the capture time, not the payment time: `eth_getLogs` does
@@ -59,7 +70,7 @@ pub fn to_jsonl(records: &[LedgerRecord]) -> Result<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{ledger_from_transfers, to_jsonl};
+    use super::{blocks_for_window, ledger_from_transfers, to_jsonl};
     use crate::chain::Transfer;
 
     const PAYER: &str = "0x4444444444444444444444444444444444444444";
@@ -74,6 +85,16 @@ mod tests {
             to: PAY_TO.to_string(),
             amount_atomic: amount,
         }
+    }
+
+    #[test]
+    fn window_converts_to_blocks() {
+        // 60 minutes at 12 s/block is 300 blocks; 61 minutes rounds up.
+        assert_eq!(blocks_for_window(60, 12), 300);
+        assert_eq!(blocks_for_window(61, 12), 305);
+        // Degenerate averages must not divide by zero or return an empty range.
+        assert_eq!(blocks_for_window(1, 0), 60);
+        assert_eq!(blocks_for_window(0, 12), 1);
     }
 
     #[test]

@@ -54,6 +54,9 @@ pub trait ChainClient {
     fn find_transfers<'a>(&'a self, query: TransferQuery) -> BoxFuture<'a, Result<Vec<Transfer>>>;
     fn token_decimals<'a>(&'a self) -> BoxFuture<'a, Result<u8>>;
     fn token_symbol<'a>(&'a self) -> BoxFuture<'a, Result<String>>;
+    /// Unix seconds of a block, used to translate an audit window into a block
+    /// range. Read-only: `eth_getBlockByNumber(n, false)`.
+    fn block_timestamp<'a>(&'a self, number: u64) -> BoxFuture<'a, Result<u64>>;
 }
 
 /// JSON-RPC reader for an EVM chain (Kite testnet or mainnet).
@@ -236,6 +239,24 @@ impl ChainClient for RpcClient {
                 ReconError::Chain("eth_call(symbol) returned a non-string".into())
             })?;
             decode_abi_string(hex)
+        })
+    }
+
+    fn block_timestamp<'a>(&'a self, number: u64) -> BoxFuture<'a, Result<u64>> {
+        Box::pin(async move {
+            let result = self
+                .call("eth_getBlockByNumber", json!([format_hex(number), false]))
+                .await?;
+            if result.is_null() {
+                return Err(ReconError::Chain(format!(
+                    "block {number} is not available from this RPC"
+                )));
+            }
+            let timestamp = result
+                .get("timestamp")
+                .and_then(Value::as_str)
+                .ok_or_else(|| ReconError::Chain(format!("block {number} has no timestamp")))?;
+            parse_hex_u64(timestamp)
         })
     }
 }
