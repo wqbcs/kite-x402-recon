@@ -146,6 +146,10 @@ recon --config recon.toml capture --window-minutes 1440 --out captured-24h.jsonl
   warning is informational; with `RECON_ALIGN_WINDOW=false` the larger fixed range still applies,
   and transfers outside the captured range will surface as orphans.
 
+- Capture-to-scan replay: the summary prints `blocks=A..B`. Scanning the same file with
+  `scan --at-block B` and the same `--window-minutes` searches exactly that captured range
+  (anchored measurement at B reproduces the same block count), so a captured window can be
+  re-checked later without drift. `tests/cli_capture.rs` pins this recipe.
 - `observed_at` is the capture time, not the settlement time; `tx_hash` ties the record to the
   transfer. This is documented in the README and in `src/capture.rs`.
 - The written file is exactly `ledger.kind = "file"` input, so `scan` accepts it unchanged.

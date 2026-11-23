@@ -107,6 +107,65 @@ fn capture_aligns_an_audit_window_with_the_chain_block_time() {
 }
 
 #[test]
+fn a_captured_window_can_be_replayed_by_an_anchored_scan() {
+    let path = std::env::temp_dir().join("recon-cli-capture-replay.jsonl");
+    let _ = std::fs::remove_file(&path);
+    let path_arg = path.to_string_lossy().to_string();
+
+    let capture = run(&[
+        "--config",
+        "recon.example.toml",
+        "capture",
+        "--window-minutes",
+        "60",
+        "--out",
+        &path_arg,
+    ]);
+    assert!(capture.status.success(), "capture exited non-zero");
+    let stdout = String::from_utf8_lossy(&capture.stdout);
+    assert!(
+        stdout.contains("blocks=700..1000"),
+        "capture must state the range it wrote: {stdout}"
+    );
+
+    // The recipe the docs give operators: reuse the captured `to_block` as the
+    // anchor and the same window, and the scan searches the captured range
+    // instead of a tip-relative one. Without this the same ledger scanned
+    // tomorrow describes a different period.
+    let scan = run_with(
+        &[
+            "--config",
+            "recon.example.toml",
+            "scan",
+            "--format",
+            "json",
+            "--at-block",
+            "1000",
+        ],
+        &[("RECON_LEDGER_PATH", &path_arg)],
+    );
+    let stdout = String::from_utf8_lossy(&scan.stdout);
+    let report: serde_json::Value = match serde_json::from_str(stdout.trim()) {
+        Ok(report) => report,
+        Err(e) => panic!("scan stdout is not JSON ({e}):\n{stdout}"),
+    };
+    assert_eq!(report["chain_tip"], 1000);
+    assert_eq!(report["anchored"], true);
+    assert_eq!(report["search"]["from_block"], 700);
+    assert_eq!(report["search"]["to_block"], 1000);
+    assert_eq!(report["search"]["lookback_blocks"], 300);
+    assert_eq!(report["search"]["block_seconds"], 12);
+    // Same ledger, same window: the verdicts must match the capture run's own
+    // accounting (2 matched receipts, 2 fixture transfers without one).
+    assert_eq!(report["summary"]["total"], 4);
+    assert_eq!(report["summary"]["matched"], 2);
+    assert_eq!(report["summary"]["pending"], 2);
+    assert_eq!(report["summary"]["orphans"], 0);
+
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
 fn capture_refuses_two_range_sources_at_once() {
     let path = std::env::temp_dir().join("recon-cli-capture-conflict.jsonl");
     let path_arg = path.to_string_lossy().to_string();

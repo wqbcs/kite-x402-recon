@@ -101,7 +101,8 @@ block range cannot drift apart. `RECON_ALIGN_WINDOW=false` (or `align_window = f
 restores the fixed `search_lookback_blocks` when you deliberately want a wider sweep; the
 `--align-window` flag forces alignment back on for a single run. `scan --at-block N` pins the
 whole audit to a past block (range, orphans, confirmations), so a verdict you published can be
-replayed after the chain has moved on.
+replayed after the chain has moved on. A captured window replays exactly: use the `to_block`
+`capture` printed as the anchor with the same `--window-minutes`.
 - **Ecosystem fit**: reconciles the settlement records produced by the x402 gateway flow used by
   `kite-x402-axum` and the other reference projects. The report shape is designed to be consumed
   next to a gateway's own ledger export — see [`fixtures/ledger.jsonl`](fixtures/ledger.jsonl) for
