@@ -69,12 +69,17 @@ Evidence supplied for registration review:
 | 2026-11-23 | `6a8056a` | docs: one measurement per tip |
 | 2026-11-23 | `9ed15c3` | `scan --at-block`: pin an audit to a past block so verdicts replay |
 | 2026-11-23 | `297a960` | docs: replay evidence + 55-test count |
+| 2026-11-23 | `152a089` | docs: submission commit table refresh |
+| 2026-11-23 | `0188b0f` | test: text/markdown/JSON agree on the searched range |
+| 2026-11-23 | `23f0e8c` | `report.anchored`: mark a replayed audit instead of passing an old tip as live |
+| 2026-11-23 | `af1b11d` | docs: anchored field + replay example |
+| 2026-11-23 | `6550427` | test: anchored label asserted in all three views |
 
 ## 4. Test, build and lint results
 
 | Check | Command | Result |
 | --- | --- | --- |
-| Tests | `cargo test --all-targets` | 56 passed (44 unit, 9 CLI black-box, 3 HTTP), 0 failed |
+| Tests | `cargo test --all-targets` | 57 passed (45 unit, 9 CLI black-box, 3 HTTP), 0 failed |
 | Lints | `cargo clippy --all-targets -- -D warnings` | clean |
 | Format | `cargo fmt --all --check` | clean |
 | Docs | `cargo doc --no-deps` | no warnings |
