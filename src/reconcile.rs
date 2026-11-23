@@ -14,6 +14,11 @@ use crate::model::{
 
 /// How far back to scan blocks when a record has no transaction hash.
 pub const DEFAULT_LOOKBACK_BLOCKS: u64 = 2_000;
+/// How many measured tips to remember. More than one keeps a dashboard that
+/// alternates between a live read and a fixed replayed anchor from re-measuring
+/// both on every pair of requests.
+const MEASUREMENT_CACHE: usize = 8;
+
 /// Cap on orphans reported per run, so one noisy receiver cannot flood the JSON.
 const MAX_ORPHANS: usize = 50;
 
@@ -35,10 +40,12 @@ pub struct Reconciler {
     /// Filled in when alignment ran, so the report can state the measurement it
     /// used instead of only the resulting range.
     measured_block_seconds: Option<u64>,
-    /// `(tip, seconds)` from the last measurement. The average is a pure
+    /// Recent `(tip, seconds)` measurements, newest first. The average is a pure
     /// function of the tip, so a long-lived instance (the HTTP server) reuses it
-    /// until the chain advances instead of issuing two block reads per request.
-    clock: Arc<Mutex<Option<(u64, u64)>>>,
+    /// instead of issuing two block reads per request; several entries keep a
+    /// dashboard alternating between a live read and a replayed anchor from
+    /// thrashing a single slot.
+    clock: Arc<Mutex<Vec<(u64, u64)>>>,
     mode: String,
 }
 
@@ -81,7 +88,7 @@ impl Reconciler {
             align_window: false,
             anchor_tip: None,
             measured_block_seconds: None,
-            clock: Arc::new(Mutex::new(None)),
+            clock: Arc::new(Mutex::new(Vec::new())),
             mode: mode.into(),
         }
     }
@@ -145,14 +152,14 @@ impl Reconciler {
                 }
             },
         };
-        let cached = self
-            .clock
-            .lock()
-            .ok()
-            .and_then(|clock| *clock)
-            .filter(|(measured_tip, _)| *measured_tip == tip);
+        let cached = self.clock.lock().ok().and_then(|clock| {
+            clock
+                .iter()
+                .find(|(measured_tip, _)| *measured_tip == tip)
+                .map(|(_, seconds)| *seconds)
+        });
         let seconds = match cached {
-            Some((_, seconds)) => seconds,
+            Some(seconds) => seconds,
             None => {
                 let seconds = match crate::capture::average_block_seconds(&*self.chain, tip).await {
                     Ok(seconds) => seconds,
@@ -164,7 +171,9 @@ impl Reconciler {
                     }
                 };
                 if let Ok(mut clock) = self.clock.lock() {
-                    *clock = Some((tip, seconds));
+                    clock.retain(|(measured_tip, _)| *measured_tip != tip);
+                    clock.insert(0, (tip, seconds));
+                    clock.truncate(MEASUREMENT_CACHE);
                 }
                 seconds
             }
@@ -838,54 +847,62 @@ mod tests {
         assert_eq!(report.orphans.len(), 0);
     }
 
+    /// Fixture chain that counts block-timestamp reads, so a test can assert how
+    /// many measurements a sequence of reports paid for.
+    struct Counting {
+        inner: crate::mock::FixtureChain,
+        block_reads: std::sync::atomic::AtomicU64,
+    }
+
+    impl crate::chain::ChainClient for Counting {
+        fn chain_id(&self) -> u64 {
+            self.inner.chain_id()
+        }
+        fn tip<'a>(&'a self) -> crate::chain::BoxFuture<'a, Result<u64>> {
+            self.inner.tip()
+        }
+        fn receipt<'a>(
+            &'a self,
+            tx_hash: &'a str,
+        ) -> crate::chain::BoxFuture<'a, Result<Option<crate::chain::Receipt>>> {
+            self.inner.receipt(tx_hash)
+        }
+        fn find_transfers<'a>(
+            &'a self,
+            query: crate::chain::TransferQuery,
+        ) -> crate::chain::BoxFuture<'a, Result<Vec<crate::chain::Transfer>>> {
+            self.inner.find_transfers(query)
+        }
+        fn token_decimals<'a>(&'a self) -> crate::chain::BoxFuture<'a, Result<u8>> {
+            self.inner.token_decimals()
+        }
+        fn token_symbol<'a>(&'a self) -> crate::chain::BoxFuture<'a, Result<String>> {
+            self.inner.token_symbol()
+        }
+        fn block_timestamp<'a>(&'a self, number: u64) -> crate::chain::BoxFuture<'a, Result<u64>> {
+            self.block_reads
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            self.inner.block_timestamp(number)
+        }
+    }
+
+    impl Counting {
+        fn new(tip: u64) -> std::sync::Arc<Self> {
+            std::sync::Arc::new(Self {
+                inner: in_memory(2368, tip, vec![], vec![]),
+                block_reads: std::sync::atomic::AtomicU64::new(0),
+            })
+        }
+
+        fn reads(&self) -> u64 {
+            self.block_reads.load(std::sync::atomic::Ordering::SeqCst)
+        }
+    }
+
     #[test]
     fn the_measurement_is_reused_until_the_chain_advances() {
-        use std::sync::atomic::{AtomicU64, Ordering};
-
-        struct Counting {
-            inner: crate::mock::FixtureChain,
-            block_reads: AtomicU64,
-        }
-
-        impl crate::chain::ChainClient for Counting {
-            fn chain_id(&self) -> u64 {
-                self.inner.chain_id()
-            }
-            fn tip<'a>(&'a self) -> crate::chain::BoxFuture<'a, Result<u64>> {
-                self.inner.tip()
-            }
-            fn receipt<'a>(
-                &'a self,
-                tx_hash: &'a str,
-            ) -> crate::chain::BoxFuture<'a, Result<Option<crate::chain::Receipt>>> {
-                self.inner.receipt(tx_hash)
-            }
-            fn find_transfers<'a>(
-                &'a self,
-                query: crate::chain::TransferQuery,
-            ) -> crate::chain::BoxFuture<'a, Result<Vec<crate::chain::Transfer>>> {
-                self.inner.find_transfers(query)
-            }
-            fn token_decimals<'a>(&'a self) -> crate::chain::BoxFuture<'a, Result<u8>> {
-                self.inner.token_decimals()
-            }
-            fn token_symbol<'a>(&'a self) -> crate::chain::BoxFuture<'a, Result<String>> {
-                self.inner.token_symbol()
-            }
-            fn block_timestamp<'a>(
-                &'a self,
-                number: u64,
-            ) -> crate::chain::BoxFuture<'a, Result<u64>> {
-                self.block_reads.fetch_add(1, Ordering::SeqCst);
-                self.inner.block_timestamp(number)
-            }
-        }
-
-        let chain = Arc::new(Counting {
-            inner: in_memory(2368, 1_000, vec![], vec![]),
-            block_reads: AtomicU64::new(0),
-        });
-        let probe = Arc::clone(&chain);
+        let chain = Counting::new(1_000);
+        let probe = std::sync::Arc::clone(&chain);
         let aligned =
             Reconciler::new(chain, RECEIVER, TOKEN, 60, 1, 2_000, 500, "mock").with_alignment(true);
         let ledger = MemoryLedger::new(vec![]);
@@ -900,7 +917,33 @@ mod tests {
         // One measurement = two block reads (tip and tip-1000), reused across
         // passes while the tip is unchanged. A served instance must not spend
         // two RPC calls per HTTP request on the same tip.
-        assert_eq!(probe.block_reads.load(Ordering::SeqCst), 2);
+        assert_eq!(probe.reads(), 2);
+    }
+
+    #[test]
+    fn alternating_live_and_anchored_reads_keep_both_measurements() {
+        let chain = Counting::new(1_000);
+        let probe = std::sync::Arc::clone(&chain);
+        let live =
+            Reconciler::new(chain, RECEIVER, TOKEN, 60, 1, 2_000, 500, "mock").with_alignment(true);
+        let ledger = MemoryLedger::new(vec![]);
+        for _ in 0..2 {
+            for anchor in [Some(900), None] {
+                let reconciler = match anchor {
+                    Some(block) => live.clone().with_anchor_tip(block),
+                    None => live.clone(),
+                };
+                let report = match block_on(reconciler.report(&ledger, now())) {
+                    Ok(r) => r,
+                    Err(e) => panic!("reconcile failed: {e}"),
+                };
+                assert_eq!(report.search.block_seconds, Some(12));
+            }
+        }
+        // Two distinct tips (live 1000, anchor 900), each measured once: a
+        // dashboard alternating live and replayed views must not re-measure on
+        // every pair of requests.
+        assert_eq!(probe.reads(), 4);
     }
 
     #[test]
