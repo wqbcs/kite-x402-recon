@@ -85,6 +85,37 @@ fn report_states_which_blocks_were_searched() {
 }
 
 #[test]
+fn at_block_anchors_the_window_in_the_past() {
+    let output = run(&[
+        "--config",
+        "recon.example.toml",
+        "scan",
+        "--format",
+        "json",
+        "--at-block",
+        "900",
+    ]);
+    let report = json_of(&output);
+    assert_eq!(report["chain_tip"], 900);
+    assert_eq!(report["search"]["to_block"], 900);
+    // 60 minutes at 12 s/block is 300 blocks, anchored at 900.
+    assert_eq!(report["search"]["from_block"], 600);
+    assert_eq!(report["search"]["block_seconds"], 12);
+
+    // A window that has not happened yet is a usage error, not a quiet pass.
+    let future = run(&[
+        "--config",
+        "recon.example.toml",
+        "scan",
+        "--format",
+        "json",
+        "--at-block",
+        "2000",
+    ]);
+    assert_eq!(future.status.code(), Some(78));
+}
+
+#[test]
 fn probe_reads_mock_metadata_without_network() {
     let output = run(&["--config", "recon.example.toml", "probe", "--json"]);
     assert!(output.status.success(), "probe in mock mode must succeed");

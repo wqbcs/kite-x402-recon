@@ -29,6 +29,9 @@ pub struct Reconciler {
     /// Derive the searched range from `window_minutes` and the chain's measured
     /// block time instead of trusting `lookback_blocks`.
     align_window: bool,
+    /// Audit as of this block instead of the chain tip, so a past window can be
+    /// re-checked later and produce the same verdicts.
+    anchor_tip: Option<u64>,
     /// Filled in when alignment ran, so the report can state the measurement it
     /// used instead of only the resulting range.
     measured_block_seconds: Option<u64>,
@@ -48,6 +51,7 @@ impl std::fmt::Debug for Reconciler {
             .field("min_confirmations", &self.min_confirmations)
             .field("lookback_blocks", &self.lookback_blocks)
             .field("align_window", &self.align_window)
+            .field("anchor_tip", &self.anchor_tip)
             .field("max_records", &self.max_records)
             .field("mode", &self.mode)
             .finish_non_exhaustive()
@@ -75,6 +79,7 @@ impl Reconciler {
             lookback_blocks: lookback_blocks.max(1),
             max_records: max_records.max(1),
             align_window: false,
+            anchor_tip: None,
             measured_block_seconds: None,
             clock: Arc::new(Mutex::new(None)),
             mode: mode.into(),
@@ -106,6 +111,16 @@ impl Reconciler {
         self
     }
 
+    /// Evaluate the ledger as of `block` instead of the current tip.
+    ///
+    /// Orphan detection, confirmation counts and the aligned lookback all move
+    /// with the anchor, so an audit of a past window can be replayed tomorrow
+    /// and yield the same block range and the same verdicts.
+    pub fn with_anchor_tip(mut self, block: u64) -> Self {
+        self.anchor_tip = Some(block.max(1));
+        self
+    }
+
     /// Resolve the block range for this pass, measuring the chain when aligned.
     ///
     /// A failed measurement must not fail the audit: falling back to the
@@ -115,12 +130,15 @@ impl Reconciler {
         if !self.align_window {
             return self;
         }
-        let tip = match self.chain.tip().await {
-            Ok(tip) => tip,
-            Err(e) => {
-                tracing::warn!("cannot align window, keeping the configured lookback: {e}");
-                return self;
-            }
+        let tip = match self.anchor_tip {
+            Some(block) => block,
+            None => match self.chain.tip().await {
+                Ok(tip) => tip,
+                Err(e) => {
+                    tracing::warn!("cannot align window, keeping the configured lookback: {e}");
+                    return self;
+                }
+            },
         };
         let cached = self
             .clock
@@ -173,7 +191,10 @@ impl Reconciler {
     }
 
     async fn pass(&self, ledger: &(dyn LedgerSource + Send + Sync), now: i64) -> Result<Report> {
-        let tip = self.chain.tip().await?;
+        let tip = match self.anchor_tip {
+            Some(block) => block,
+            None => self.chain.tip().await?,
+        };
         let mut records = ledger.fetch().await?;
         records.truncate(self.max_records);
 
@@ -777,6 +798,36 @@ mod tests {
         };
         assert_eq!(report.search.lookback_blocks, 300);
         assert_eq!(report.search.from_block, 700);
+        assert_eq!(report.search.block_seconds, Some(12));
+        assert_eq!(report.orphans.len(), 0);
+    }
+
+    #[test]
+    fn an_anchor_replays_a_past_window_deterministically() {
+        let old = "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+        let future = "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+        let chain = in_memory(
+            2368,
+            1_000,
+            vec![],
+            vec![
+                transfer(old, 100, PAYER, RECEIVER, 5_000),
+                transfer(future, 995, PAYER, RECEIVER, 5_000),
+            ],
+        );
+        let ledger = MemoryLedger::new(vec![]);
+        let anchored = reconciler(chain, 1)
+            .with_alignment(true)
+            .with_anchor_tip(900);
+        let report = match block_on(anchored.report(&ledger, now())) {
+            Ok(r) => r,
+            Err(e) => panic!("reconcile failed: {e}"),
+        };
+        // As of block 900 the aligned 60-minute window is 600..900, so the
+        // transfer at 995 is in the future and must not appear as an orphan.
+        assert_eq!(report.chain_tip, 900);
+        assert_eq!(report.search.to_block, 900);
+        assert_eq!(report.search.from_block, 600);
         assert_eq!(report.search.block_seconds, Some(12));
         assert_eq!(report.orphans.len(), 0);
     }

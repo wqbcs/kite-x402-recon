@@ -50,6 +50,10 @@ enum Command {
         /// the chain's measured block time, instead of a fixed lookback in blocks.
         #[arg(long)]
         align_window: bool,
+        /// Audit as of this block instead of the current tip, so a past window
+        /// can be replayed with the same range and verdicts.
+        #[arg(long)]
+        at_block: Option<u64>,
     },
     /// Write a ledger file from the token transfers a block range contains.
     Capture {
@@ -138,7 +142,19 @@ async fn run(cli: Cli) -> ExitCode {
             strict,
             out,
             align_window,
-        } => scan(&config, chain, format, strict, out.as_deref(), align_window).await,
+            at_block,
+        } => {
+            scan(
+                &config,
+                chain,
+                format,
+                strict,
+                out.as_deref(),
+                align_window,
+                at_block,
+            )
+            .await
+        }
         Command::Capture {
             from_block,
             to_block,
@@ -236,6 +252,7 @@ async fn scan(
     strict: bool,
     out: Option<&std::path::Path>,
     align_window: bool,
+    at_block: Option<u64>,
 ) -> ExitCode {
     let ledger = match ledger_from_config(config) {
         Ok(ledger) => ledger,
@@ -249,6 +266,28 @@ async fn scan(
         // Alignment is on by default via config; the flag still forces it for a
         // single run, because an operator passing it means what it says.
         reconciler = reconciler.with_alignment(true);
+    }
+    if let Some(block) = at_block {
+        if block == 0 {
+            tracing::error!("--at-block must be at least 1");
+            return ExitCode::from(78);
+        }
+        let tip = match chain.tip().await {
+            Ok(tip) => tip,
+            Err(e) => {
+                tracing::error!("cannot verify --at-block against the chain: {e}");
+                return ExitCode::from(69);
+            }
+        };
+        if block > tip {
+            tracing::error!(
+                at_block = block,
+                tip,
+                "--at-block is ahead of the chain tip"
+            );
+            return ExitCode::from(78);
+        }
+        reconciler = reconciler.with_anchor_tip(block);
     }
     let result = reconciler.report(&*ledger, now_unix()).await;
     let report = match result {
