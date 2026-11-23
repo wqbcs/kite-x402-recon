@@ -57,7 +57,18 @@ Evidence supplied for registration review:
 | 2026-11-23 | `6b651a7` | docs: window-aligned capture + the measured 886 s/block finding |
 | 2026-11-23 | `93e67be` | `scan --align-window`: search the range the window actually covers |
 | 2026-11-23 | `42c4139` | docs: aligned vs unaligned run (15 orphans → 0) in EVIDENCE |
+| 2026-11-23 | `6526037` | `chore(release): 0.3.0` + submission refresh |
 | 2026-11-23 | `v0.3.0` tag | release marker for window alignment |
+| 2026-11-23 | `9b29fb5` | `report.search`: the report states the block range it searched |
+| 2026-11-23 | `8f359d5` | docs: search range in API/coverage/CHANGELOG/EVIDENCE |
+| 2026-11-23 | `d261ca4` | `probe`: report the measured block time (`block_s` / `block_seconds`) |
+| 2026-11-23 | `31a9ad2` | docs: block time in the probe contract |
+| 2026-11-23 | `6ad5728` | window alignment moves into the reconciler/config (on by default, `serve` included) |
+| 2026-11-23 | `81569ca` | docs: alignment everywhere + second live measurement (898 s/block, 5-block window) |
+| 2026-11-23 | `ddc3864` | reuse the block-time measurement until the tip moves |
+| 2026-11-23 | `6a8056a` | docs: one measurement per tip |
+| 2026-11-23 | `9ed15c3` | `scan --at-block`: pin an audit to a past block so verdicts replay |
+| 2026-11-23 | `297a960` | docs: replay evidence + 55-test count |
 
 ## 4. Test, build and lint results
 
