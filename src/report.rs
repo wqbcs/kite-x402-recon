@@ -16,8 +16,15 @@ pub fn to_text(report: &Report) -> String {
     let mut out = String::new();
     let _ = writeln!(
         out,
-        "mode={} chain_id={} tip={} window={}m generated_at={}",
-        report.mode, report.chain_id, report.chain_tip, report.window_minutes, report.generated_at
+        "mode={} chain_id={} tip={} window={}m search={}..{} ({} blocks) generated_at={}",
+        report.mode,
+        report.chain_id,
+        report.chain_tip,
+        report.window_minutes,
+        report.search.from_block,
+        report.search.to_block,
+        report.search.lookback_blocks,
+        report.generated_at
     );
     let s = &report.summary;
     let _ = writeln!(
@@ -56,6 +63,18 @@ pub fn to_text(report: &Report) -> String {
 /// Markdown table for copy-pasting into an issue or a submission record.
 pub fn to_markdown(report: &Report) -> String {
     let mut out = String::new();
+    let _ = writeln!(
+        out,
+        "> `{}` chain {} · tip {} · audit window {}m · searched blocks {}..{} ({} blocks)",
+        report.mode,
+        report.chain_id,
+        report.chain_tip,
+        report.window_minutes,
+        report.search.from_block,
+        report.search.to_block,
+        report.search.lookback_blocks
+    );
+    let _ = writeln!(out);
     let _ = writeln!(out, "| outcome | id | amount | tx | reason |");
     let _ = writeln!(out, "| --- | --- | --- | --- | --- |");
     for record in &report.records {
@@ -119,6 +138,11 @@ mod tests {
             generated_at: "2026-11-22T10:00:00Z".into(),
             window_minutes: 60,
             chain_tip: 1000,
+            search: crate::model::SearchWindow {
+                from_block: 0,
+                to_block: 1000,
+                lookback_blocks: 2000,
+            },
             summary: Summary {
                 total: 1,
                 mismatched: 1,
@@ -157,13 +181,19 @@ mod tests {
         };
         assert_eq!(value["mode"], "mock");
         assert_eq!(value["records"][0]["outcome"], "mismatched");
+        assert_eq!(value["search"]["to_block"], 1000);
+        assert_eq!(value["search"]["lookback_blocks"], 2000);
     }
 
     #[test]
-    fn text_and_markdown_name_the_mode() {
+    fn text_and_markdown_name_the_mode_and_the_searched_range() {
         let report = sample();
-        assert!(to_text(&report).contains("mode=mock"));
-        assert!(to_markdown(&report).contains("MISMATCH"));
+        let text = to_text(&report);
+        assert!(text.contains("mode=mock"));
+        assert!(text.contains("search=0..1000"));
+        let markdown = to_markdown(&report);
+        assert!(markdown.contains("MISMATCH"));
+        assert!(markdown.contains("searched blocks 0..1000"));
     }
 
     #[test]

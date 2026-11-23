@@ -137,6 +137,18 @@ impl Summary {
     }
 }
 
+/// The block range the chain window actually covered.
+///
+/// Reported because a verdict without its scope is not evidence: a reader has
+/// to be able to tell whether "no transfer found" means the money is missing or
+/// the search simply stopped too early.
+#[derive(Debug, Clone, Serialize)]
+pub struct SearchWindow {
+    pub from_block: u64,
+    pub to_block: u64,
+    pub lookback_blocks: u64,
+}
+
 /// Full report returned by `scan` and `/api/v1/reconcile`.
 #[derive(Debug, Clone, Serialize)]
 pub struct Report {
@@ -147,6 +159,8 @@ pub struct Report {
     pub generated_at: String,
     pub window_minutes: u64,
     pub chain_tip: u64,
+    /// Blocks searched for orphan transfers and hash-less records.
+    pub search: SearchWindow,
     pub summary: Summary,
     pub records: Vec<ReconciledRecord>,
     pub orphans: Vec<OrphanTransfer>,

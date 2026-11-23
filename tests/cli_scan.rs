@@ -57,6 +57,30 @@ fn scan_reports_every_fixture_outcome() {
 }
 
 #[test]
+fn report_states_which_blocks_were_searched() {
+    let output = run(&["--config", "recon.example.toml", "scan", "--format", "json"]);
+    let report = json_of(&output);
+    // Fixture tip 1000 with the default 2000-block lookback clamps at block 0.
+    assert_eq!(report["search"]["from_block"], 0);
+    assert_eq!(report["search"]["to_block"], 1000);
+    assert_eq!(report["search"]["lookback_blocks"], 2000);
+
+    // 60 minutes at the fixture's 12 s/block is 300 blocks, so alignment must
+    // narrow the reported range instead of leaving the reader to guess.
+    let aligned = run(&[
+        "--config",
+        "recon.example.toml",
+        "scan",
+        "--format",
+        "json",
+        "--align-window",
+    ]);
+    let report = json_of(&aligned);
+    assert_eq!(report["search"]["from_block"], 700);
+    assert_eq!(report["search"]["lookback_blocks"], 300);
+}
+
+#[test]
 fn probe_reads_mock_metadata_without_network() {
     let output = run(&["--config", "recon.example.toml", "probe", "--json"]);
     assert!(output.status.success(), "probe in mock mode must succeed");

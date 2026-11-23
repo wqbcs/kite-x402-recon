@@ -8,7 +8,9 @@ use std::sync::Arc;
 use crate::chain::{ChainClient, Receipt, Transfer, TransferQuery};
 use crate::error::Result;
 use crate::ledger::LedgerSource;
-use crate::model::{format_unix, OrphanTransfer, Outcome, ReconciledRecord, Report, Summary};
+use crate::model::{
+    format_unix, OrphanTransfer, Outcome, ReconciledRecord, Report, SearchWindow, Summary,
+};
 
 /// How far back to scan blocks when a record has no transaction hash.
 pub const DEFAULT_LOOKBACK_BLOCKS: u64 = 2_000;
@@ -123,6 +125,11 @@ impl Reconciler {
             generated_at: format_unix(now),
             window_minutes: self.window_minutes,
             chain_tip: tip,
+            search: SearchWindow {
+                from_block: tip.saturating_sub(self.lookback_blocks),
+                to_block: tip,
+                lookback_blocks: self.lookback_blocks,
+            },
             summary,
             records: findings,
             orphans,
