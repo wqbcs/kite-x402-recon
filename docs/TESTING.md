@@ -14,7 +14,7 @@ cargo test
 | --- | --- | --- |
 | Unit (lib) | `src/*::tests` | parsing, config, decoding, all reconciliation outcomes, rendering |
 | CLI black-box | `tests/cli_scan.rs` | the real binary produces the documented JSON, exits 1 on differences, exits 2 under `--strict` when pending, and `probe` works offline |
-| HTTP contract | `tests/http_api.rs` | router shape: health open, 401 without token, 200 with token, fixture summary identical to CLI |
+| HTTP contract | `tests/http_api.rs` | router shape: health open, 401 without token, 200 with token, fixture summary and aligned `search` range identical to CLI |
 
 ## Current coverage map
 
@@ -22,7 +22,7 @@ cargo test
 | --- | --- |
 | Amounts | plain digits, trim, reject `-1 / +1 / 1.5 / 1,000 / 0x10 / ""`, u128 overflow |
 | Timestamps | RFC 3339 round-trip, invalid input |
-| Config | live needs token address + http RPC, receiver address required in every mode, window/max-records/lookback bounds, http ledger needs URL, address shape |
+| Config | live needs token address + http RPC, receiver address required in every mode, window/max-records/lookback bounds, `align_window` default/override via `RECON_ALIGN_WINDOW`, http ledger needs URL, address shape |
 | Chain decoding | `Transfer` topic → address, ABI `string` (symbol), hex numbers, decimals mismatch |
 | Reconciliation | matched, reverted → failed, short payment → mismatched, too few confirmations → pending, no receipt → pending, missing hash recovered by log search, ambiguous/absent candidates, orphans, wrong receiver → unknown, bad amount → unknown, stale record in live mode → unknown, duplicate claim → second record unknown + `duplicates`, aligned lookback excludes transfers older than the window |
 | Mock client | block-window + receiver filtering, tx-hash validation |

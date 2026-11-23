@@ -43,13 +43,18 @@ Reconciles one ledger batch.
 | `--format text\|json\|markdown` | `text` | Output rendering. |
 | `--strict` | off | Exit `2` when anything is `pending`. |
 | `--out <path>` | – | Also write the rendered report to this file. |
-| `--align-window` | off | Search a block range derived from `reconcile.window_minutes` and the chain's measured block time, instead of `reconcile.search_lookback_blocks`. |
+| `--align-window` | on | Force alignment for this run: search a block range derived from `reconcile.window_minutes` and the chain's measured block time instead of `reconcile.search_lookback_blocks`. Only needed when config or `RECON_ALIGN_WINDOW` turned it off. |
 | `--config` | see above | Configuration. |
 
-`--align-window` makes the searched range and the audit window describe the same period. Without
-it, the two use different units and a slow chain silently widens the sweep: on Kite testnet
-(886 s/block) `search_lookback_blocks = 2000` reaches back ~20 days, so a 24-hour audit reported
-15 orphans that were all older than the window. Aligned, the same ledger and chain report 0.
+Alignment is on by default (`reconcile.align_window = true`, `RECON_ALIGN_WINDOW=true`) and the
+served HTTP report uses the same setting, so a CLI run and a `/api/v1/reconcile` call answer the
+same question about the same period. It makes the searched range and the audit window describe
+the same period. Without it, the two use different units and a slow chain silently widens the
+sweep: on Kite testnet (886 s/block) `search_lookback_blocks = 2000` reaches back ~20 days, so a
+24-hour audit reported 15 orphans that were all older than the window. Aligned, the same ledger
+and chain report 0. Alignment needs one `eth_getBlockByNumber` probe per run; set
+`RECON_ALIGN_WINDOW=false` if that call is rate-limited, but then set `search_lookback_blocks`
+from a measured `block_seconds` yourself.
 
 Examples:
 
@@ -134,9 +139,10 @@ recon --config recon.toml capture --window-minutes 1440 --out captured-24h.jsonl
   1000 back, then rounds the block count up so the range can only be wider, never short.
   On Kite testnet (2026-11-23) this measured ~886 s per block, i.e. a 24-hour window was only
   ~97 blocks — a fixed `search_lookback_blocks` would have been wildly oversized.
-- When the estimated block count is smaller than `reconcile.search_lookback_blocks`, a warning
-  is logged: `scan` still searches the larger range, so transfers outside the captured range will
-  surface as orphans. Set `RECON_LOOKBACK_BLOCKS` near the captured block count to align them.
+- When the derived block count is smaller than `reconcile.search_lookback_blocks`, a warning is
+  logged: with alignment on (the default) `scan` now searches the same measured period, so the
+  warning is informational; with `RECON_ALIGN_WINDOW=false` the larger fixed range still applies,
+  and transfers outside the captured range will surface as orphans.
 
 - `observed_at` is the capture time, not the settlement time; `tx_hash` ties the record to the
   transfer. This is documented in the README and in `src/capture.rs`.

@@ -11,9 +11,18 @@ All notable changes to this project are documented here. Format follows
   block time, `null` when it cannot be read. It is the number that decides whether
   `search_lookback_blocks` makes sense on a given chain (2000 blocks ≈ 7 h at 12 s, ≈ 20 days at
   Kite testnet's 886 s), so it belongs in the first command an operator runs.
-- `report.search` (`{from_block, to_block, lookback_blocks}`) in JSON, `search=…` in text and a
-  provenance line in Markdown: a verdict now carries the block range it was derived from, so
-  "no transfer found" can be distinguished from "the search stopped too early".
+- `report.search` (`{from_block, to_block, lookback_blocks, block_seconds}`) in JSON, `search=…`
+  in text and a provenance line in Markdown: a verdict now carries the block range it was derived
+  from, so "no transfer found" can be distinguished from "the search stopped too early".
+
+### Changed
+
+- Window alignment moved from a `scan` flag into the reconciler and config: `align_window`
+  defaults to `true` (`RECON_ALIGN_WINDOW`, `align_window` in `[reconcile]`), and `serve` /
+  `/api/v1/reconcile` inherit it. Previously only a CLI flag could align the range, so a served
+  instance kept searching the raw 2000-block lookback while the CLI reported the window.
+  `--align-window` remains as an explicit override for a single run; the probe cost is one
+  `eth_getBlockByNumber` per report.
 
 ## [0.3.0] - 2026-11-23
 

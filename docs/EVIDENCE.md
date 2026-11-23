@@ -9,7 +9,7 @@ checkout of `main` on 2026-11-22.
 | --- | --- | --- |
 | Format | `cargo fmt --all --check` | clean |
 | Lints | `cargo clippy --all-targets -- -D warnings` | clean |
-| Tests | `cargo test --all-targets` | 43 passed (35 unit, 2 capture CLI, 3 scan CLI, 3 HTTP), 0 failed |
+| Tests | `cargo test --all-targets` | 52 passed (41 unit, 4 capture CLI, 4 scan CLI, 3 HTTP), 0 failed |
 | Docs | `cargo doc --no-deps` | no warnings |
 | CI | GitHub Actions `CI` on push `418a69c` | #3 completed successfully (2m 2s): fmt+clippy+test on ubuntu-latest ✅, windows-latest ✅, rustdoc ✅ |
 
@@ -139,6 +139,30 @@ mode=live chain_id=2368 tip=22045335 window=1440m search=22045237..22045335 (98 
 total=1 matched=1 pending=0 mismatched=0 unknown=0 orphans=0 duplicates=0
 MATCHED 0x13a25fa7…fd39e amount=2000000000000000000 :: confirmed at block 22045327
 ```
+
+## Alignment as a default, verified through both surfaces (2026-11-23)
+
+After moving alignment into the reconciler/config (on by default, shared by `scan` and `serve`),
+the same two commands were re-run against live testnet at tip `22045342`:
+
+```
+$ recon probe
+mode=live chain_id=2368 tip=22045342 block_s=898 token=USDT decimals=18
+
+$ RECON_LEDGER_PATH=fixtures/kite_testnet_capture.jsonl recon scan --format text
+mode=live chain_id=2368 tip=22045342 window=60m search=22045337..22045342 (5 blocks, 898s/block)
+total=2 matched=0 pending=0 mismatched=0 failed=0 unknown=2 orphans=0 duplicates=0
+UNKNOWN 0x13a25fa7…fd39e 0x6633…8b1d amount=2000000000000000000 tx=- :: record is older than the 60 minute window
+UNKNOWN 0x71ddfc73…2a8482 0x6633…8b1d amount=2000000000000000000 tx=- :: record is older than the 60 minute window
+```
+
+Two things are worth reading here. First, the block time moved from 886 s to 898 s within a day
+on the same chain, which is exactly why the range is measured per run instead of configured by
+hand. Second, aligning a 60-minute window to 5 blocks now correctly classifies the two captured
+records as outside the window (`unknown`, reason stated) rather than searching a month of
+history — the day-old capture and today's window genuinely do not overlap, and the report says so
+instead of guessing. `tests/http_api.rs` asserts the served report carries the same `search`
+range and `block_seconds` as the CLI path.
 
 The report states the searched range it drew its verdicts from (`search=22045237..22045335`,
 98 blocks). Without that line a reader cannot separate "the money is missing" from "the search

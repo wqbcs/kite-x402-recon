@@ -48,7 +48,7 @@ Success: `200 OK`, `Content-Type: application/json`,
   "generated_at": "2026-11-22T15:31:30Z",
   "window_minutes": 60,
   "chain_tip": 1000,
-  "search": { "from_block": 0, "to_block": 1000, "lookback_blocks": 2000 },
+  "search": { "from_block": 700, "to_block": 1000, "lookback_blocks": 300, "block_seconds": 12 },
   "summary": {
     "total": 7, "matched": 2, "pending": 1, "mismatched": 1,
     "failed": 1, "unknown": 2, "orphans": 1, "duplicates": 0
@@ -83,6 +83,11 @@ Field notes:
 - `mode` is always present; `mock` means the numbers came from a fixture, never from a chain.
 - `search` is the block range the verdicts came from. Without it a reader cannot tell "the money is
   missing" from "the search stopped early", so treat it as part of the result rather than metadata.
+  `block_seconds` is the measured block time that produced the range (`null` when alignment is off
+  or the chain could not be measured); it keeps the range auditable instead of magic.
+- `serve` builds its reconciler from the same config as the CLI, so window alignment applies here
+  too: a `window_minutes=60` deployment searches what an hour actually covers on that chain rather
+  than the raw `search_lookback_blocks` default (2000 blocks ≈ 20 days on Kite testnet).
 - `outcome` ∈ `matched | pending | mismatched | failed | unknown`.
 - `recovered_by` appears only when the log-search path produced the match (`"log_search"`).
 - `tx_hash`, `payer`, `block_number`, `confirmations` are omitted when not applicable.
