@@ -39,7 +39,13 @@ Reconciles one ledger batch.
 | `--format text\|json\|markdown` | `text` | Output rendering. |
 | `--strict` | off | Exit `2` when anything is `pending`. |
 | `--out <path>` | – | Also write the rendered report to this file. |
+| `--align-window` | off | Search a block range derived from `reconcile.window_minutes` and the chain's measured block time, instead of `reconcile.search_lookback_blocks`. |
 | `--config` | see above | Configuration. |
+
+`--align-window` makes the searched range and the audit window describe the same period. Without
+it, the two use different units and a slow chain silently widens the sweep: on Kite testnet
+(886 s/block) `search_lookback_blocks = 2000` reaches back ~20 days, so a 24-hour audit reported
+15 orphans that were all older than the window. Aligned, the same ledger and chain report 0.
 
 Examples:
 
@@ -55,6 +61,9 @@ recon --config recon.toml scan --format markdown --out report.md
 
 # CI gate: also fail when nothing is final yet
 recon --config recon.toml scan --strict
+
+# Audit a one-day window: search exactly the blocks that one day covers
+recon --config recon.toml scan --align-window
 ```
 
 Environment shortcuts override the TOML for one run, which is how CI and cron jobs usually

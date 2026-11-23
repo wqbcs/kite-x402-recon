@@ -24,7 +24,7 @@ cargo test
 | Timestamps | RFC 3339 round-trip, invalid input |
 | Config | live needs token address + http RPC, receiver address required in every mode, window/max-records/lookback bounds, http ledger needs URL, address shape |
 | Chain decoding | `Transfer` topic → address, ABI `string` (symbol), hex numbers, decimals mismatch |
-| Reconciliation | matched, reverted → failed, short payment → mismatched, too few confirmations → pending, no receipt → pending, missing hash recovered by log search, ambiguous/absent candidates, orphans, wrong receiver → unknown, bad amount → unknown, stale record in live mode → unknown, duplicate claim → second record unknown + `duplicates` |
+| Reconciliation | matched, reverted → failed, short payment → mismatched, too few confirmations → pending, no receipt → pending, missing hash recovered by log search, ambiguous/absent candidates, orphans, wrong receiver → unknown, bad amount → unknown, stale record in live mode → unknown, duplicate claim → second record unknown + `duplicates`, aligned lookback excludes transfers older than the window |
 | Mock client | block-window + receiver filtering, tx-hash validation |
 | Ledger | JSONL line numbers on parse errors, `{records:[…]}` vs array vs garbage, `kite-x402-hono` receipt normalisation (camelCase fields, ms/second timestamps, numeric amounts) |
 | Report | JSON round-trip, text/markdown mode label, exit-code matrix |

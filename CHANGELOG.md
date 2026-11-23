@@ -12,6 +12,9 @@ All notable changes to this project are documented here. Format follows
   so the range is never short. Conflicts with `--from-block`. A warning is logged when `scan` will
   search a wider range than was captured. Verified live on Kite testnet, where the measurement
   returned ~886 s/block and a 24-hour window mapped to 97 blocks.
+- `scan --align-window`: search the block range that `reconcile.window_minutes` actually covers,
+  measured from the chain, instead of the fixed `search_lookback_blocks`. The same 24-hour testnet
+  ledger reported 15 orphans unaligned and 0 aligned — the 15 were old money outside the window.
 
 ## [0.2.0] - 2026-11-22
 

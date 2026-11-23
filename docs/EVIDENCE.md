@@ -120,6 +120,29 @@ Findings that came out of this and are now written into the docs:
   an order of magnitude too wide. Operators should derive it from `window_minutes` with this
   measurement, not copy the default.
 
+## Aligning the search range with the window (2026-11-23)
+
+The 24-hour capture above was audited twice against the same chain, once with the fixed
+`search_lookback_blocks = 2000` and once with `--align-window`:
+
+```
+# fixed lookback (2000 blocks == ~20 days at 886 s/block)
+total=1 matched=1 pending=0 mismatched=0 unknown=0 orphans=15 duplicates=0
+
+# --align-window (window_minutes=1440 -> lookback_blocks=98)
+total=1 matched=1 pending=0 mismatched=0 unknown=0 orphans=0 duplicates=0
+MATCHED 0x13a25fa7…fd39e amount=2000000000000000000 :: confirmed at block 22045327
+```
+
+Nothing about the ledger or the chain changed between the two runs — only the range. The 15
+orphans were real transfers to the receiver, but every one of them settled weeks before the
+24-hour window opened. Reporting them is not wrong, yet as an audit signal it is noise: the
+operator asked "what is unaccounted for in the last day", and got a month's worth of history.
+
+`--align-window` measures block time the same way `capture --window-minutes` does and passes the
+derived block count to the reconciler, so the search range and the audit window describe the same
+period. Use it together with `capture --window-minutes`, then a clean ledger means a clean window.
+
 ## Real transfers, captured and reconciled against Kite testnet
 
 This is the run that makes the tool more than a fixture demo. On 2026-11-22 at tip `22045329`,

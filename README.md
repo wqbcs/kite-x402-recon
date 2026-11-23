@@ -94,7 +94,9 @@ matched with `"recovered_by": "log_search"`, or as pending if several candidates
   Kite testnet at tip `22045329`, wrote them to
   [`fixtures/kite_testnet_capture.jsonl`](fixtures/kite_testnet_capture.jsonl), and `scan` then
   matched both records against real receipts — see the run in
-  [`docs/EVIDENCE.md`](docs/EVIDENCE.md). No mock data, no mocked RPC.
+  [`docs/EVIDENCE.md`](docs/EVIDENCE.md). No mock data, no mocked RPC. `capture --window-minutes`
+  and `scan --align-window` also derive block ranges from the chain's measured block time
+  (~886 s on testnet), so a wall-clock audit window and a block range cannot drift apart.
 - **Ecosystem fit**: reconciles the settlement records produced by the x402 gateway flow used by
   `kite-x402-axum` and the other reference projects. The report shape is designed to be consumed
   next to a gateway's own ledger export — see [`fixtures/ledger.jsonl`](fixtures/ledger.jsonl) for
@@ -161,8 +163,9 @@ things to know:
 - Capture narrows the block range; `scan` searches the `window_minutes` window. A transfer that
   settled inside the audit window but outside your capture range shows up as an `orphan` — that is
   not a false positive, it is money your ledger never recorded. If the estimated range is smaller
-  than `search_lookback_blocks`, `capture` logs a warning telling you to align
-  `RECON_LOOKBACK_BLOCKS`.
+  than `search_lookback_blocks`, `capture` logs a warning telling you to run `scan --align-window`
+  (or set `RECON_LOOKBACK_BLOCKS`); `scan --align-window` derives the searched range from the same
+  measured block time, so the two ranges agree by construction.
 
 ## Configuration
 
