@@ -83,7 +83,7 @@ Evidence supplied for registration review:
 | Lints | `cargo clippy --all-targets -- -D warnings` | clean |
 | Format | `cargo fmt --all --check` | clean |
 | Docs | `cargo doc --no-deps` | no warnings |
-| CI | GitHub Actions `CI` (ubuntu-latest + windows-latest) | green on `42c4139`: <https://github.com/wqbcs/kite-x402-recon/actions/runs/45097642882> |
+| CI | GitHub Actions `CI` (ubuntu-latest + windows-latest) | green on `6550427`: <https://github.com/wqbcs/kite-x402-recon/actions/runs/45122631187> |
 
 ## 5. Runnable demonstration
 
