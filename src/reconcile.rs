@@ -3,7 +3,7 @@
 //! a difference can be explained without re-running anything.
 
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use crate::chain::{ChainClient, Receipt, Transfer, TransferQuery};
 use crate::error::Result;
@@ -32,6 +32,10 @@ pub struct Reconciler {
     /// Filled in when alignment ran, so the report can state the measurement it
     /// used instead of only the resulting range.
     measured_block_seconds: Option<u64>,
+    /// `(tip, seconds)` from the last measurement. The average is a pure
+    /// function of the tip, so a long-lived instance (the HTTP server) reuses it
+    /// until the chain advances instead of issuing two block reads per request.
+    clock: Arc<Mutex<Option<(u64, u64)>>>,
     mode: String,
 }
 
@@ -72,6 +76,7 @@ impl Reconciler {
             max_records: max_records.max(1),
             align_window: false,
             measured_block_seconds: None,
+            clock: Arc::new(Mutex::new(None)),
             mode: mode.into(),
         }
     }
@@ -117,11 +122,28 @@ impl Reconciler {
                 return self;
             }
         };
-        let seconds = match crate::capture::average_block_seconds(&*self.chain, tip).await {
-            Ok(seconds) => seconds,
-            Err(e) => {
-                tracing::warn!("cannot measure block time, keeping the configured lookback: {e}");
-                return self;
+        let cached = self
+            .clock
+            .lock()
+            .ok()
+            .and_then(|clock| *clock)
+            .filter(|(measured_tip, _)| *measured_tip == tip);
+        let seconds = match cached {
+            Some((_, seconds)) => seconds,
+            None => {
+                let seconds = match crate::capture::average_block_seconds(&*self.chain, tip).await {
+                    Ok(seconds) => seconds,
+                    Err(e) => {
+                        tracing::warn!(
+                            "cannot measure block time, keeping the configured lookback: {e}"
+                        );
+                        return self;
+                    }
+                };
+                if let Ok(mut clock) = self.clock.lock() {
+                    *clock = Some((tip, seconds));
+                }
+                seconds
             }
         };
         let blocks = crate::capture::blocks_for_window(self.window_minutes, seconds);
@@ -757,6 +779,71 @@ mod tests {
         assert_eq!(report.search.from_block, 700);
         assert_eq!(report.search.block_seconds, Some(12));
         assert_eq!(report.orphans.len(), 0);
+    }
+
+    #[test]
+    fn the_measurement_is_reused_until_the_chain_advances() {
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        struct Counting {
+            inner: crate::mock::FixtureChain,
+            block_reads: AtomicU64,
+        }
+
+        impl crate::chain::ChainClient for Counting {
+            fn chain_id(&self) -> u64 {
+                self.inner.chain_id()
+            }
+            fn tip<'a>(&'a self) -> crate::chain::BoxFuture<'a, Result<u64>> {
+                self.inner.tip()
+            }
+            fn receipt<'a>(
+                &'a self,
+                tx_hash: &'a str,
+            ) -> crate::chain::BoxFuture<'a, Result<Option<crate::chain::Receipt>>> {
+                self.inner.receipt(tx_hash)
+            }
+            fn find_transfers<'a>(
+                &'a self,
+                query: crate::chain::TransferQuery,
+            ) -> crate::chain::BoxFuture<'a, Result<Vec<crate::chain::Transfer>>> {
+                self.inner.find_transfers(query)
+            }
+            fn token_decimals<'a>(&'a self) -> crate::chain::BoxFuture<'a, Result<u8>> {
+                self.inner.token_decimals()
+            }
+            fn token_symbol<'a>(&'a self) -> crate::chain::BoxFuture<'a, Result<String>> {
+                self.inner.token_symbol()
+            }
+            fn block_timestamp<'a>(
+                &'a self,
+                number: u64,
+            ) -> crate::chain::BoxFuture<'a, Result<u64>> {
+                self.block_reads.fetch_add(1, Ordering::SeqCst);
+                self.inner.block_timestamp(number)
+            }
+        }
+
+        let chain = Arc::new(Counting {
+            inner: in_memory(2368, 1_000, vec![], vec![]),
+            block_reads: AtomicU64::new(0),
+        });
+        let probe = Arc::clone(&chain);
+        let aligned =
+            Reconciler::new(chain, RECEIVER, TOKEN, 60, 1, 2_000, 500, "mock").with_alignment(true);
+        let ledger = MemoryLedger::new(vec![]);
+        for _ in 0..2 {
+            let report = match block_on(aligned.report(&ledger, now())) {
+                Ok(r) => r,
+                Err(e) => panic!("reconcile failed: {e}"),
+            };
+            assert_eq!(report.search.block_seconds, Some(12));
+            assert_eq!(report.search.lookback_blocks, 300);
+        }
+        // One measurement = two block reads (tip and tip-1000), reused across
+        // passes while the tip is unchanged. A served instance must not spend
+        // two RPC calls per HTTP request on the same tip.
+        assert_eq!(probe.block_reads.load(Ordering::SeqCst), 2);
     }
 
     #[test]
