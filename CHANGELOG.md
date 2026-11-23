@@ -5,7 +5,11 @@ All notable changes to this project are documented here. Format follows
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- `report.search` (`{from_block, to_block, lookback_blocks}`) in JSON, `search=…` in text and a
+  provenance line in Markdown: a verdict now carries the block range it was derived from, so
+  "no transfer found" can be distinguished from "the search stopped too early".
 
 ## [0.3.0] - 2026-11-23
 

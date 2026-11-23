@@ -130,9 +130,14 @@ The 24-hour capture above was audited twice against the same chain, once with th
 total=1 matched=1 pending=0 mismatched=0 unknown=0 orphans=15 duplicates=0
 
 # --align-window (window_minutes=1440 -> lookback_blocks=98)
+mode=live chain_id=2368 tip=22045335 window=1440m search=22045237..22045335 (98 blocks)
 total=1 matched=1 pending=0 mismatched=0 unknown=0 orphans=0 duplicates=0
 MATCHED 0x13a25fa7…fd39e amount=2000000000000000000 :: confirmed at block 22045327
 ```
+
+The report states the searched range it drew its verdicts from (`search=22045237..22045335`,
+98 blocks). Without that line a reader cannot separate "the money is missing" from "the search
+stopped too early", and the difference between the two runs below would be invisible.
 
 Nothing about the ledger or the chain changed between the two runs — only the range. The 15
 orphans were real transfers to the receiver, but every one of them settled weeks before the

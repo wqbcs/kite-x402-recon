@@ -27,7 +27,7 @@ cargo test
 | Reconciliation | matched, reverted → failed, short payment → mismatched, too few confirmations → pending, no receipt → pending, missing hash recovered by log search, ambiguous/absent candidates, orphans, wrong receiver → unknown, bad amount → unknown, stale record in live mode → unknown, duplicate claim → second record unknown + `duplicates`, aligned lookback excludes transfers older than the window |
 | Mock client | block-window + receiver filtering, tx-hash validation |
 | Ledger | JSONL line numbers on parse errors, `{records:[…]}` vs array vs garbage, `kite-x402-hono` receipt normalisation (camelCase fields, ms/second timestamps, numeric amounts) |
-| Report | JSON round-trip, text/markdown mode label, exit-code matrix |
+| Report | JSON round-trip, text/markdown mode label, searched block range in all three renderings, exit-code matrix |
 | Capture | transfers → records, unique ids for several transfers in one transaction, JSONL round-trip, capture → scan round trip, window→block arithmetic (`blocks_for_window` incl. empty/rounding cases), chain-measured window alignment, inverted block range rejected, conflicting range flags rejected |
 | Server | constant-time compare, bearer enforcement |
 

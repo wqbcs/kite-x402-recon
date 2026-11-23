@@ -48,6 +48,7 @@ Success: `200 OK`, `Content-Type: application/json`,
   "generated_at": "2026-11-22T15:31:30Z",
   "window_minutes": 60,
   "chain_tip": 1000,
+  "search": { "from_block": 0, "to_block": 1000, "lookback_blocks": 2000 },
   "summary": {
     "total": 7, "matched": 2, "pending": 1, "mismatched": 1,
     "failed": 1, "unknown": 2, "orphans": 1, "duplicates": 0
@@ -80,6 +81,8 @@ Success: `200 OK`, `Content-Type: application/json`,
 Field notes:
 
 - `mode` is always present; `mock` means the numbers came from a fixture, never from a chain.
+- `search` is the block range the verdicts came from. Without it a reader cannot tell "the money is
+  missing" from "the search stopped early", so treat it as part of the result rather than metadata.
 - `outcome` ∈ `matched | pending | mismatched | failed | unknown`.
 - `recovered_by` appears only when the log-search path produced the match (`"log_search"`).
 - `tx_hash`, `payer`, `block_number`, `confirmations` are omitted when not applicable.
