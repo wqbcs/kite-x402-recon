@@ -52,7 +52,8 @@ same question about the same period. It makes the searched range and the audit w
 the same period. Without it, the two use different units and a slow chain silently widens the
 sweep: on Kite testnet (886 s/block) `search_lookback_blocks = 2000` reaches back ~20 days, so a
 24-hour audit reported 15 orphans that were all older than the window. Aligned, the same ledger
-and chain report 0. Alignment needs one `eth_getBlockByNumber` probe per run; set
+and chain report 0. Alignment needs two `eth_getBlockByNumber` reads (tip and tip−1000) the first time it sees a
+tip; the pair is cached per tip, so `serve` does not repeat it per request. Set
 `RECON_ALIGN_WINDOW=false` if that call is rate-limited, but then set `search_lookback_blocks`
 from a measured `block_seconds` yourself.
 

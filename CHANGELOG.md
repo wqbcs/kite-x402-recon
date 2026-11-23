@@ -21,8 +21,9 @@ All notable changes to this project are documented here. Format follows
   defaults to `true` (`RECON_ALIGN_WINDOW`, `align_window` in `[reconcile]`), and `serve` /
   `/api/v1/reconcile` inherit it. Previously only a CLI flag could align the range, so a served
   instance kept searching the raw 2000-block lookback while the CLI reported the window.
-  `--align-window` remains as an explicit override for a single run; the probe cost is one
-  `eth_getBlockByNumber` per report.
+  `--align-window` remains as an explicit override for a single run. The measurement is cached
+  per tip, so a served instance spends one probe pair when the chain advances, not on every
+  request.
 
 ## [0.3.0] - 2026-11-23
 
