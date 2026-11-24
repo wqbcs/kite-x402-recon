@@ -13,7 +13,7 @@ cargo test
 | Suite | File | What it proves |
 | --- | --- | --- |
 | Unit (lib) | `src/*::tests` | parsing, config, decoding, all reconciliation outcomes, rendering, and text/markdown/JSON agreement on the searched range |
-| CLI black-box | `tests/cli_scan.rs` | the real binary produces the documented JSON, exits 1 on differences, exits 2 under `--strict` when pending, and `probe` works offline |
+| CLI black-box | `tests/cli_scan.rs` | the real binary produces the documented JSON, exits 1 on differences, exits 2 under `--strict` when pending, renders CSV with one row per record and orphan, and `probe` works offline |
 | HTTP contract | `tests/http_api.rs` | router shape: health open, 401 without token, 200 with token, fixture summary and aligned `search` range identical to CLI, `at_block` replay and its `400` cases |
 
 ## Current coverage map
@@ -27,7 +27,7 @@ cargo test
 | Reconciliation | matched, reverted → failed, short payment → mismatched, too few confirmations → pending, no receipt → pending, missing hash recovered by log search, ambiguous/absent candidates, orphans, wrong receiver → unknown, bad amount → unknown, stale record in live mode → unknown, duplicate claim → second record unknown + `duplicates`, aligned lookback excludes transfers older than the window |
 | Mock client | block-window + receiver filtering, tx-hash validation |
 | Ledger | JSONL line numbers on parse errors, `{records:[…]}` vs array vs garbage, `kite-x402-hono` receipt normalisation (camelCase fields, ms/second timestamps, numeric amounts) |
-| Report | JSON round-trip, text/markdown mode label, searched block range in all three renderings, exit-code matrix |
+| Report | JSON round-trip, text/markdown mode label, searched block range in all three renderings, CSV row shape and RFC 4180 quoting of commas/quotes/newlines, exit-code matrix |
 | Capture | transfers → records, unique ids for several transfers in one transaction, JSONL round-trip, capture → scan round trip, captured range replayed by an anchored scan, window→block arithmetic (`blocks_for_window` incl. empty/rounding cases), chain-measured window alignment, inverted block range rejected, conflicting range flags rejected |
 | Server | constant-time compare, bearer enforcement |
 

@@ -7,6 +7,12 @@ All notable changes to this project are documented here. Format follows
 
 ### Added
 
+- `scan --format csv`: the reconciliation as RFC 4180 CSV — one row per ledger record plus one row
+  per orphan transfer (`kind` tells them apart), columns
+  `kind,id,outcome,pay_to,payer,amount_atomic,tx_hash,block_number,confirmations,recovered_by,reason`.
+  Nullable fields stay empty rather than invented, and commas/quotes/newlines are quoted, so the
+  file opens in a spreadsheet and parses with a standard CSV reader. The bundled fixture already
+  exercises quoting: its mismatch reason contains a comma.
 - `probe` reports `block_seconds` (text `block_s=`, JSON `block_seconds`): the measured average
   block time, `null` when it cannot be read. It is the number that decides whether
   `search_lookback_blocks` makes sense on a given chain (2000 blocks ≈ 7 h at 12 s, ≈ 20 days at
@@ -36,6 +42,8 @@ All notable changes to this project are documented here. Format follows
   `--align-window` remains as an explicit override for a single run. Recent measurements are
   cached per tip (eight entries), so a served instance spends one probe pair when a tip is first
   seen — including a dashboard alternating between a live read and a replayed anchor.
+- Rendered reports now end with exactly one newline. `scan` used to append a second one, which left
+  a blank line at the end of every redirected output (and an empty final row in a saved CSV).
 
 ## [0.3.0] - 2026-11-23
 

@@ -40,7 +40,7 @@ Reconciles one ledger batch.
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `--format text\|json\|markdown` | `text` | Output rendering. |
+| `--format text\|json\|markdown\|csv` | `text` | Output rendering. `csv` is RFC 4180, one row per record plus one per orphan (`kind` distinguishes them), for spreadsheets. |
 | `--strict` | off | Exit `2` when anything is `pending`. |
 | `--out <path>` | – | Also write the rendered report to this file. |
 | `--at-block <n>` | current tip | Audit as of this block: the aligned range, orphan scan and confirmation counts all move with it, so a past window can be replayed later with the same verdicts. Refused (`78`) when ahead of the tip. |
@@ -70,12 +70,21 @@ recon --config recon.toml scan --format json | jq '.summary'
 # Markdown table for an issue or a submission record
 recon --config recon.toml scan --format markdown --out report.md
 
+# Spreadsheet-ready evidence for an accountant or auditor
+recon --config recon.toml scan --format csv --out report.csv
+
 # CI gate: also fail when nothing is final yet
 recon --config recon.toml scan --strict
 
 # Audit a one-day window: search exactly the blocks that one day covers
 recon --config recon.toml scan --align-window
 ```
+
+The CSV columns are fixed:
+`kind,id,outcome,pay_to,payer,amount_atomic,tx_hash,block_number,confirmations,recovered_by,reason`.
+`kind` is `payment` for a ledger record and `orphan` for a transfer with no ledger entry; nullable
+fields are left empty instead of invented, and commas/quotes/newlines are quoted per RFC 4180, so
+the file opens cleanly in a spreadsheet and parses with a standard CSV reader.
 
 Environment shortcuts override the TOML for one run, which is how CI and cron jobs usually
 configure this:

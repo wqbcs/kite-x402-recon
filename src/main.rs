@@ -87,6 +87,8 @@ enum OutputFormat {
     Text,
     Json,
     Markdown,
+    /// RFC 4180 CSV for spreadsheet reconciliation.
+    Csv,
 }
 
 fn main() -> ExitCode {
@@ -300,6 +302,7 @@ async fn scan(
     let rendered = match format {
         OutputFormat::Text => report::to_text(&report),
         OutputFormat::Markdown => report::to_markdown(&report),
+        OutputFormat::Csv => report::to_csv(&report),
         OutputFormat::Json => match report::to_json(&report) {
             Ok(text) => text,
             Err(e) => {
@@ -315,7 +318,7 @@ async fn scan(
         }
         tracing::info!(path = %path.display(), "report written");
     }
-    if let Err(e) = write_stdout(&format!("{rendered}\n")) {
+    if let Err(e) = write_stdout(&format!("{}\n", rendered.trim_end_matches('\n'))) {
         tracing::error!("cannot write to stdout: {e}");
         return ExitCode::from(74);
     }

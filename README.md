@@ -31,7 +31,7 @@ re-submitting settlements, no writing to a chain.
 | Command | Purpose |
 | --- | --- |
 | `recon probe` | Verify RPC reachability, chain id, tip, measured block time and token metadata (symbol/decimals). |
-| `recon scan` | Reconcile one ledger batch against the chain window; render `text`, `json` or `markdown`. |
+| `recon scan` | Reconcile one ledger batch against the chain window; render `text`, `json`, `markdown` or `csv`. |
 | `recon capture` | Rebuild a ledger file from the token transfers a block range contains (recovery path). |
 | `recon serve` | Expose the same report over a small read-only HTTP API (`/healthz`, `/api/v1/reconcile`). |
 
@@ -296,7 +296,7 @@ receipt normalisation, `capture → scan` round trip, bearer auth, JSON shape, e
 ## Known limitations
 
 - **Read-only by design**: no key handling, no settlement retry, no state storage.
-- **No UI**: JSON/text/markdown only. The HTTP API is for dashboards and probes, not a console.
+- **No UI**: JSON/text/markdown/CSV only. The HTTP API is for dashboards and probes, not a console.
 - **Gateway adapters are thin**: the file JSONL, the `kite-x402-hono` receipt dump and the generic
   HTTP endpoint are implemented; no other gateway's private store shape is supported yet.
 - **Log search is block-window based**, not timestamp-optimised: a very old record needs a larger

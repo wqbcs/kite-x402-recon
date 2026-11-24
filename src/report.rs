@@ -123,6 +123,74 @@ fn label(outcome: Outcome) -> &'static str {
     }
 }
 
+/// The report as RFC 4180 CSV: one row per ledger record and one row per
+/// orphan transfer, so a reconciliation can be opened directly in a
+/// spreadsheet. Nullable fields are left empty rather than invented.
+pub fn to_csv(report: &Report) -> String {
+    let mut out = String::new();
+    let _ = writeln!(
+        out,
+        "kind,id,outcome,pay_to,payer,amount_atomic,tx_hash,block_number,confirmations,recovered_by,reason"
+    );
+    for record in &report.records {
+        write_csv_row(
+            &mut out,
+            &[
+                "payment".to_owned(),
+                record.id.clone(),
+                label(record.outcome).to_owned(),
+                record.pay_to.clone(),
+                record.payer.clone().unwrap_or_default(),
+                record.amount_atomic.clone(),
+                record.tx_hash.clone().unwrap_or_default(),
+                record
+                    .block_number
+                    .map(|number| number.to_string())
+                    .unwrap_or_default(),
+                record
+                    .confirmations
+                    .map(|count| count.to_string())
+                    .unwrap_or_default(),
+                record.recovered_by.clone().unwrap_or_default(),
+                record.reason.clone(),
+            ],
+        );
+    }
+    for orphan in &report.orphans {
+        write_csv_row(
+            &mut out,
+            &[
+                "orphan".to_owned(),
+                String::new(),
+                "ORPHAN".to_owned(),
+                orphan.to.clone(),
+                orphan.from.clone(),
+                orphan.amount_atomic.clone(),
+                orphan.tx_hash.clone(),
+                orphan.block_number.to_string(),
+                String::new(),
+                String::new(),
+                "no ledger record backed this transfer".to_owned(),
+            ],
+        );
+    }
+    out
+}
+
+fn write_csv_row(out: &mut String, fields: &[String]) {
+    let escaped: Vec<String> = fields.iter().map(|field| csv_field(field)).collect();
+    let _ = writeln!(out, "{}", escaped.join(","));
+}
+
+/// Quotes a field only when RFC 4180 requires it, doubling embedded quotes.
+fn csv_field(value: &str) -> String {
+    if value.contains([',', '"', '\n', '\r']) {
+        format!("\"{}\"", value.replace('"', "\"\""))
+    } else {
+        value.to_owned()
+    }
+}
+
 /// Exit code for CLI and CI use: 0 clean, 1 differences, 2 pending but no
 /// differences when `strict` is off.
 pub fn exit_code(report: &Report, strict: bool) -> i32 {
@@ -260,5 +328,39 @@ mod tests {
         report.summary.pending = 1;
         assert_eq!(exit_code(&report, false), 0);
         assert_eq!(exit_code(&report, true), 2);
+    }
+
+    #[test]
+    fn csv_has_one_row_per_record_and_orphan() {
+        let csv = to_csv(&sample());
+        let lines: Vec<&str> = csv.lines().collect();
+        assert_eq!(
+            lines[0],
+            "kind,id,outcome,pay_to,payer,amount_atomic,tx_hash,block_number,confirmations,recovered_by,reason"
+        );
+        assert_eq!(lines.len(), 3, "one header, one payment, one orphan: {csv}");
+        for line in &lines {
+            assert_eq!(
+                line.split(',').count(),
+                11,
+                "unaltered sample fields must not need quoting: {line}"
+            );
+        }
+        assert!(lines[1].starts_with("payment,inv|1,MISMATCH,0x2222"));
+        assert!(lines[2].starts_with("orphan,,ORPHAN,0x2222"));
+    }
+
+    #[test]
+    fn csv_quotes_commas_quotes_and_newlines() {
+        let mut report = sample();
+        report.records[0].reason = "receipt, \"settled\"\nlate".into();
+        let csv = to_csv(&report);
+        assert!(
+            csv.contains("\"receipt, \"\"settled\"\"\nlate\""),
+            "RFC 4180 quoting is missing: {csv}"
+        );
+        // The quoted newline stays inside one field instead of splitting the row.
+        assert_eq!(csv.matches("payment,").count(), 1);
+        assert_eq!(csv.matches("orphan,").count(), 1);
     }
 }

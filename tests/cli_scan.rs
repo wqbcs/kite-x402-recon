@@ -118,6 +118,42 @@ fn at_block_anchors_the_window_in_the_past() {
 }
 
 #[test]
+fn csv_export_carries_every_record_and_orphan() {
+    let output = run(&["--config", "recon.example.toml", "scan", "--format", "csv"]);
+    assert!(
+        !output.status.success(),
+        "the fixture has differences, so the exit code must stay 1"
+    );
+    let csv = String::from_utf8_lossy(&output.stdout);
+    let mut lines = csv.lines();
+    assert_eq!(
+        lines.next(),
+        Some(
+            "kind,id,outcome,pay_to,payer,amount_atomic,tx_hash,block_number,confirmations,recovered_by,reason"
+        )
+    );
+    let rows: Vec<&str> = lines.collect();
+    assert_eq!(rows.len(), 8, "7 ledger records plus 1 orphan: {csv}");
+    assert_eq!(
+        rows.iter().filter(|row| row.starts_with("orphan,")).count(),
+        1,
+        "{csv}"
+    );
+    assert_eq!(
+        rows.iter()
+            .filter(|row| row.starts_with("payment,"))
+            .count(),
+        7,
+        "{csv}"
+    );
+    assert!(
+        rows.iter()
+            .any(|row| row.starts_with("payment,inv_search,MATCHED,")),
+        "{csv}"
+    );
+}
+
+#[test]
 fn probe_reads_mock_metadata_without_network() {
     let output = run(&["--config", "recon.example.toml", "probe", "--json"]);
     assert!(output.status.success(), "probe in mock mode must succeed");
