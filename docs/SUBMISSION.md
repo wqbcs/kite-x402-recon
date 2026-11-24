@@ -79,16 +79,20 @@ Evidence supplied for registration review:
 | 2026-11-23 | `34da7be` | docs: HTTP replay contract + live evidence |
 | 2026-11-23 | `9bb566b` | cache the last eight block-time measurements |
 | 2026-11-23 | `9d116f8` | docs: multi-tip cache + 60-test count |
+| 2026-11-23 | `6485a82` | docs: submission table through `9d116f8` |
+| 2026-11-23 | `6394d80` | docs: CI evidence for the HTTP replay build |
+| 2026-11-23 | `eedd5bd` | test: a captured window is replayed by an anchored scan |
+| 2026-11-24 | `dcd0fd4` | `scan --format csv`: spreadsheet evidence + a single trailing newline |
 
 ## 4. Test, build and lint results
 
 | Check | Command | Result |
 | --- | --- | --- |
-| Tests | `cargo test --all-targets` | 61 passed (46 unit, 10 CLI black-box, 5 HTTP), 0 failed |
+| Tests | `cargo test --all-targets` | 64 passed (48 unit, 11 CLI black-box, 5 HTTP), 0 failed |
 | Lints | `cargo clippy --all-targets -- -D warnings` | clean |
 | Format | `cargo fmt --all --check` | clean |
 | Docs | `cargo doc --no-deps` | no warnings |
-| CI | GitHub Actions `CI` (ubuntu-latest + windows-latest) | green on `9d116f8`: <https://github.com/wqbcs/kite-x402-recon/actions/runs/45126519150> |
+| CI | GitHub Actions `CI` (ubuntu-latest + windows-latest) | green on `dcd0fd4`: <https://github.com/wqbcs/kite-x402-recon/actions/runs/45400743177> |
 
 ## 5. Runnable demonstration
 
@@ -97,6 +101,13 @@ No network (mock mode):
 ```bash
 cargo run -- --config recon.example.toml scan --format text
 # total=7 matched=2 pending=1 mismatched=1 failed=1 unknown=2 orphans=1 duplicates=0, exit 1
+```
+
+The same verdicts as spreadsheet rows (one row per record, one per orphan):
+
+```bash
+cargo run -- --config recon.example.toml scan --format csv --out report.csv
+# report.csv: 9 lines (header + 7 records + 1 orphan); comma-bearing reasons are quoted
 ```
 
 Real Kite testnet (2026-11-22, tip `22045329`):

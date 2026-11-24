@@ -9,9 +9,9 @@ checkout of `main` on 2026-11-22.
 | --- | --- | --- |
 | Format | `cargo fmt --all --check` | clean |
 | Lints | `cargo clippy --all-targets -- -D warnings` | clean |
-| Tests | `cargo test --all-targets` | 61 passed (46 unit, 5 capture CLI, 5 scan CLI, 5 HTTP), 0 failed |
+| Tests | `cargo test --all-targets` | 64 passed (48 unit, 5 capture CLI, 6 scan CLI, 5 HTTP), 0 failed |
 | Docs | `cargo doc --no-deps` | no warnings |
-| CI | GitHub Actions `CI` on push `418a69c` | #3 completed successfully (2m 2s): fmt+clippy+test on ubuntu-latest ✅, windows-latest ✅, rustdoc ✅ |
+| CI | GitHub Actions `CI` on push `dcd0fd4` | green (fmt+clippy+test on ubuntu-latest and windows-latest, rustdoc): <https://github.com/wqbcs/kite-x402-recon/actions/runs/45400743177> |
 
 CI runs: <https://github.com/wqbcs/kite-x402-recon/actions/runs/45039227007> (`f30ed70`),
 <https://github.com/wqbcs/kite-x402-recon/actions/runs/45040413110> (`7ab7a80`), and the latest on
@@ -39,6 +39,23 @@ ORPHAN     block=999 tx=0x6666… from=0x9999… to=0x2222… amount=25000
 
 Exit code `1` — differences exist, as the report says. `scan --strict` also exits `2` when only
 pending records remain (asserted in `tests/cli_scan.rs`).
+
+## CSV export (2026-11-24, `dcd0fd4`)
+
+```bash
+cargo run -- --config recon.example.toml scan --format csv --out report.csv
+```
+
+```
+kind,id,outcome,pay_to,payer,amount_atomic,tx_hash,block_number,confirmations,recovered_by,reason
+payment,inv_ok,MATCHED,0x2222…,0x4444…,10000,0x1111…,990,11,,transfer of 10000 atomic units confirmed at block 990
+payment,inv_short,MISMATCH,0x2222…,0x4444…,10000,0x3333…,995,,,"receipt settled 5000 atomic units, 10000 were expected"
+payment,inv_pending,PENDING,0x2222…,0x8888…,3000,0x5555…,,,,no receipt yet; the gateway may have submitted it very recently
+orphan,,ORPHAN,0x2222…,0x9999…,25000,0x6666…,999,,,no ledger record backed this transfer
+```
+
+Nine physical lines: header, seven ledger records, one orphan. The mismatch reason contains a
+comma, so that field is quoted and `wc -l` stays 9 rather than splitting it into extra rows.
 
 ## Consuming a `kite-x402-hono` receipt dump
 
