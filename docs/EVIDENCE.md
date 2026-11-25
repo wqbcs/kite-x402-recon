@@ -9,9 +9,9 @@ checkout of `main` on 2026-11-22.
 | --- | --- | --- |
 | Format | `cargo fmt --all --check` | clean |
 | Lints | `cargo clippy --all-targets -- -D warnings` | clean |
-| Tests | `cargo test --all-targets` | 64 passed (48 unit, 5 capture CLI, 6 scan CLI, 5 HTTP), 0 failed |
+| Tests | `cargo test --all-targets` | 67 passed (48 unit, 5 capture CLI, 6 scan CLI, 8 HTTP), 0 failed |
 | Docs | `cargo doc --no-deps` | no warnings |
-| CI | GitHub Actions `CI` on push `dcd0fd4` | green (fmt+clippy+test on ubuntu-latest and windows-latest, rustdoc): <https://github.com/wqbcs/kite-x402-recon/actions/runs/45400743177> |
+| CI | GitHub Actions `CI` on push `ab9f191` | green (fmt+clippy+test on ubuntu-latest and windows-latest, rustdoc): <https://github.com/wqbcs/kite-x402-recon/actions/runs/45539165762> |
 
 CI runs: <https://github.com/wqbcs/kite-x402-recon/actions/runs/45039227007> (`f30ed70`),
 <https://github.com/wqbcs/kite-x402-recon/actions/runs/45040413110> (`7ab7a80`), and the latest on
@@ -232,6 +232,41 @@ operator asked "what is unaccounted for in the last day", and got a month's wort
 `--align-window` measures block time the same way `capture --window-minutes` does and passes the
 derived block count to the reconciler, so the search range and the audit window describe the same
 period. Use it together with `capture --window-minutes`, then a clean ledger means a clean window.
+
+## CSV from the HTTP surface (2026-11-25)
+
+`serve` now answers `?format=csv` with the same bytes as `scan --format csv`. Real process, bundled
+mock fixtures, `serve` on `127.0.0.1:8081`:
+
+```bash
+curl -sD - -H "Authorization: Bearer dev-token" \
+  "http://127.0.0.1:8081/api/v1/reconcile?format=csv&at_block=900"
+```
+
+```
+HTTP/1.1 200 OK
+content-type: text/csv; charset=utf-8
+content-disposition: attachment; filename="reconcile-600-900.csv"
+cache-control: max-age=30
+
+kind,id,outcome,pay_to,payer,amount_atomic,tx_hash,block_number,confirmations,recovered_by,reason
+payment,inv_ok,MATCHED,0x2222…,0x4444…,10000,0x1111…,990,1,,transfer of 10000 atomic units confirmed at block 990
+payment,inv_search,PENDING,0x2222…,0x5555…,10000,,,,,no Transfer to the receiver at or above 10000 atomic units in the last 300 blocks …
+payment,inv_short,MISMATCH,0x2222…,0x4444…,10000,0x3333…,995,,,"receipt settled 5000 atomic units, 10000 were expected"
+```
+
+Eight lines: header plus the seven records inside the anchored window; the quoted reason keeps its
+comma out of the row split. An unsupported value is refused instead of silently served as JSON:
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" -H "Authorization: Bearer dev-token" \
+  "http://127.0.0.1:8081/api/v1/reconcile?format=xml"
+# 400
+```
+
+`tests/http_api.rs` pins the content type, header row, row count, quoted field, the download
+filename and the `400`. The CLI, the served JSON and the served CSV come from the same `Report`,
+so the three views cannot disagree.
 
 ## Real transfers, captured and reconciled against Kite testnet
 
