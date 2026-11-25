@@ -9,9 +9,12 @@ checkout of `main` on 2026-11-22.
 | --- | --- | --- |
 | Format | `cargo fmt --all --check` | clean |
 | Lints | `cargo clippy --all-targets -- -D warnings` | clean |
-| Tests | `cargo test --all-targets` | 67 passed (48 unit, 5 capture CLI, 6 scan CLI, 8 HTTP), 0 failed |
+| Tests | `cargo test --all-targets` | 68 passed (49 unit, 5 capture CLI, 6 scan CLI, 8 HTTP), 0 failed |
 | Docs | `cargo doc --no-deps` | no warnings |
-| CI | GitHub Actions `CI` on push `ab9f191` | green (fmt+clippy+test on ubuntu-latest and windows-latest, rustdoc): <https://github.com/wqbcs/kite-x402-recon/actions/runs/45539165762> |
+| CI | GitHub Actions `CI` on push `5a11fde` | green (fmt+clippy+test on ubuntu-latest and windows-latest, rustdoc): <https://github.com/wqbcs/kite-x402-recon/actions/runs/45589588102> |
+
+Earlier green runs in this series: `ab9f191` <https://github.com/wqbcs/kite-x402-recon/actions/runs/45539165762>
+and `fbd6653` <https://github.com/wqbcs/kite-x402-recon/actions/runs/45539589446>.
 
 CI runs: <https://github.com/wqbcs/kite-x402-recon/actions/runs/45039227007> (`f30ed70`),
 <https://github.com/wqbcs/kite-x402-recon/actions/runs/45040413110> (`7ab7a80`), and the latest on

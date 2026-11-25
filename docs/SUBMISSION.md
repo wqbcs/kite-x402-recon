@@ -84,15 +84,19 @@ Evidence supplied for registration review:
 | 2026-11-23 | `eedd5bd` | test: a captured window is replayed by an anchored scan |
 | 2026-11-24 | `dcd0fd4` | `scan --format csv`: spreadsheet evidence + a single trailing newline |
 
+| 2026-11-25 | `ab9f191` | `serve ?format=csv`: the same RFC 4180 export over HTTP |
+| 2026-11-25 | `fbd6653` | docs: CSV from the HTTP surface (headers, body, 400 on unknown format) |
+| 2026-11-25 | `5a11fde` | `report.receiver`: an archived report names the wallet it audited |
+
 ## 4. Test, build and lint results
 
 | Check | Command | Result |
 | --- | --- | --- |
-| Tests | `cargo test --all-targets` | 64 passed (48 unit, 11 CLI black-box, 5 HTTP), 0 failed |
+| Tests | `cargo test --all-targets` | 68 passed (49 unit, 5 capture CLI, 6 scan CLI, 8 HTTP), 0 failed |
 | Lints | `cargo clippy --all-targets -- -D warnings` | clean |
 | Format | `cargo fmt --all --check` | clean |
 | Docs | `cargo doc --no-deps` | no warnings |
-| CI | GitHub Actions `CI` (ubuntu-latest + windows-latest) | green on `dcd0fd4`: <https://github.com/wqbcs/kite-x402-recon/actions/runs/45400743177> |
+| CI | GitHub Actions `CI` (ubuntu-latest + windows-latest) | green on `5a11fde`: <https://github.com/wqbcs/kite-x402-recon/actions/runs/45589588102> |
 
 ## 5. Runnable demonstration
 
