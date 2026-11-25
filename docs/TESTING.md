@@ -14,7 +14,7 @@ cargo test
 | --- | --- | --- |
 | Unit (lib) | `src/*::tests` | parsing, config, decoding, all reconciliation outcomes, rendering, and text/markdown/JSON agreement on the searched range |
 | CLI black-box | `tests/cli_scan.rs` | the real binary produces the documented JSON, exits 1 on differences, exits 2 under `--strict` when pending, renders CSV with one row per record and orphan, and `probe` works offline |
-| HTTP contract | `tests/http_api.rs` | router shape: health open, 401 without token, 200 with token, fixture summary and aligned `search` range identical to CLI, `at_block` replay and its `400` cases, CSV export and its download name, unknown `format` rejected |
+| HTTP contract | `tests/http_api.rs` | router shape: health open, `readyz` reads a tip and the ledger (and `503`s when the ledger is unreadable) without a token, 401 without token, 200 with token, fixture summary and aligned `search` range identical to CLI, `at_block` replay and its `400` cases, CSV export and its download name, unknown `format` rejected |
 
 ## Current coverage map
 

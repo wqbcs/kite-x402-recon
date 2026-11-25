@@ -39,10 +39,13 @@ impl std::fmt::Debug for AppState {
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/healthz", get(healthz))
+        .route("/readyz", get(readyz))
         .route("/api/v1/reconcile", get(reconcile))
         .with_state(state)
 }
 
+/// Liveness only: the process answered. It deliberately says nothing about
+/// whether a report could be produced right now, so it stays cheap and open.
 async fn healthz(State(state): State<AppState>) -> Response {
     let body = json!({
         "status": "ok",
@@ -53,6 +56,45 @@ async fn healthz(State(state): State<AppState>) -> Response {
         "auth": if state.token.is_some() { "bearer" } else { "disabled" },
     });
     (StatusCode::OK, Json(body)).into_response()
+}
+
+/// Readiness: both inputs a report needs are usable, not just that the process
+/// is alive. `/healthz` returning ok while the RPC or the ledger is broken is
+/// the failure a load balancer must not route around, so this endpoint touches
+/// the chain tip and reads the ledger, and answers 503 when either fails.
+async fn readyz(State(state): State<AppState>) -> Response {
+    match probe_readiness(&state).await {
+        Ok((tip, records)) => (
+            StatusCode::OK,
+            Json(json!({
+                "status": "ready",
+                "chain_id": state.reconciler.chain_id(),
+                "tip": tip,
+                "ledger": state.ledger.describe(),
+                "records": records,
+            })),
+        )
+            .into_response(),
+        Err(reason) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({ "status": "unavailable", "reason": reason })),
+        )
+            .into_response(),
+    }
+}
+
+async fn probe_readiness(state: &AppState) -> std::result::Result<(u64, usize), String> {
+    let tip = state
+        .reconciler
+        .current_tip()
+        .await
+        .map_err(|e| format!("chain: {e}"))?;
+    let records = state
+        .ledger
+        .fetch()
+        .await
+        .map_err(|e| format!("ledger: {e}"))?;
+    Ok((tip, records.len()))
 }
 
 async fn reconcile(

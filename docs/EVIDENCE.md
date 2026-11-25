@@ -9,7 +9,7 @@ checkout of `main` on 2026-11-22.
 | --- | --- | --- |
 | Format | `cargo fmt --all --check` | clean |
 | Lints | `cargo clippy --all-targets -- -D warnings` | clean |
-| Tests | `cargo test --all-targets` | 68 passed (49 unit, 5 capture CLI, 6 scan CLI, 8 HTTP), 0 failed |
+| Tests | `cargo test --all-targets` | 70 passed (49 unit, 5 capture CLI, 6 scan CLI, 10 HTTP), 0 failed |
 | Docs | `cargo doc --no-deps` | no warnings |
 | CI | GitHub Actions `CI` on push `5a11fde` | green (fmt+clippy+test on ubuntu-latest and windows-latest, rustdoc): <https://github.com/wqbcs/kite-x402-recon/actions/runs/45589588102> |
 
@@ -270,6 +270,34 @@ curl -s -o /dev/null -w "%{http_code}\n" -H "Authorization: Bearer dev-token" \
 `tests/http_api.rs` pins the content type, header row, row count, quoted field, the download
 filename and the `400`. The CLI, the served JSON and the served CSV come from the same `Report`,
 so the three views cannot disagree.
+
+## Readiness vs liveness (2026-11-25)
+
+`/healthz` answers without touching the chain, which is right for liveness and wrong for a load
+balancer: it stays `200` while the RPC is rate-limited. `/readyz` reads a tip and parses the ledger.
+Healthy instance, bundled mock fixtures on `127.0.0.1:8081`:
+
+```bash
+curl -s "http://127.0.0.1:8081/readyz"
+# {"chain_id":2368,"ledger":"file:fixtures/ledger.jsonl","records":7,"status":"ready","tip":1000}
+curl -s "http://127.0.0.1:8081/healthz"
+# {"auth":"disabled","chain_id":2368,"mode":"mock","service":"kite-x402-recon","status":"ok","version":"0.3.0"}
+```
+
+Same binary, same fixture chain, with `ledger.path` pointed at a file that does not exist:
+
+```
+HTTP/1.1 503 Service Unavailable
+content-type: application/json
+
+{"reason":"ledger: ledger source: cannot read fixtures/absent.jsonl: 系统找不到指定的文件。 (os error 2)","status":"unavailable"}
+```
+
+The reason names the failing side, so an operator reads the log line instead of guessing. The
+message after `cannot read` is the OS's own text (Localized on this Windows host; POSIX hosts say
+"No such file or directory"). `tests/http_api.rs` pins all three behaviours: `200` with the tip it
+actually read and the record count it actually parsed, no token needed, and `503` with
+`reason` starting `ledger:` when the file is missing.
 
 ## Real transfers, captured and reconciled against Kite testnet
 

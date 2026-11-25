@@ -247,12 +247,13 @@ UNKNOWN inv_second … :: transaction hash already claimed by record inv_first;
 
 | Route | Behavior |
 | --- | --- |
-| `GET /healthz` | `{"status":"ok","mode":…,"chain_id":…,"auth":"bearer"\|"disabled"}` |
+| `GET /healthz` | `{"status":"ok","mode":…,"chain_id":…,"auth":"bearer"\|"disabled"}` — liveness, never touches the chain |
+| `GET /readyz` | Readiness: reads a chain tip **and** parses the ledger; `{"status":"ready","tip":…,"records":…}`, or `503` naming the failing side |
 | `GET /api/v1/reconcile` | Full report JSON, same shape as `scan --format json`; `Cache-Control: max-age=<refresh_seconds>` |
 
 Auth: when `RECON_API_TOKEN` (the variable named by `server.api_token_env`) is set, `/api/v1/reconcile`
-requires `Authorization: Bearer <token>`; `/healthz` stays open. Unset token is allowed only for
-loopback binds and logs a warning. Errors are JSON: `{"error":"…"}`.
+requires `Authorization: Bearer <token>`; `/healthz` and `/readyz` stay open. Unset token is allowed
+only for loopback binds and logs a warning. Errors are JSON: `{"error":"…"}`.
 
 See [`docs/API.md`](docs/API.md) for the full contract.
 

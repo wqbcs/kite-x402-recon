@@ -123,6 +123,22 @@ CMD ["serve", "--bind", "0.0.0.0:8081"]
 
 Bake no secrets into the image; pass `RECON_LEDGER_TOKEN` / `RECON_API_TOKEN` at runtime.
 
+Probes: point liveness at `GET /healthz` (process only) and readiness at `GET /readyz` (reads a chain
+tip and parses the ledger; `503` while either is broken). Compose:
+
+```yaml
+healthcheck:
+  test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8081/readyz"]
+  interval: 60s
+  timeout: 10s
+  retries: 3
+  start_period: 15s
+```
+
+A liveness-only check would keep an instance marked healthy through an RPC outage and fail every
+report request it receives; readiness drains it instead, and the container restarts only when the
+process itself is stuck.
+
 ## Network surface
 
 | Direction | Destination | Required |

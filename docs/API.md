@@ -15,11 +15,12 @@ token.
 | yes | `/api/v1/reconcile` requires `Authorization: Bearer <token>`; wrong or missing → `401`. |
 | no | API is open. Intended for loopback only; the server logs a warning at startup. |
 
-Comparisons are constant-time. `/healthz` never requires auth (probes must work without secrets).
+Comparisons are constant-time. `/healthz` and `/readyz` never require auth (probes must work
+without secrets).
 
 ## `GET /healthz`
 
-`200 OK`, no body schema beyond:
+Liveness. `200 OK`, no body schema beyond:
 
 ```json
 {
@@ -32,7 +33,34 @@ Comparisons are constant-time. `/healthz` never requires auth (probes must work 
 }
 ```
 
-`auth` is `"bearer"` or `"disabled"`. This endpoint does not call the chain or the ledger.
+`auth` is `"bearer"` or `"disabled"`. This endpoint does not call the chain or the ledger, so it
+stays cheap and answers even while an upstream is down.
+
+## `GET /readyz`
+
+Readiness: it touches both inputs a report needs instead of trusting the process state.
+
+```json
+{
+  "status": "ready",
+  "chain_id": 2368,
+  "tip": 1000,
+  "ledger": "memory",
+  "records": 7
+}
+```
+
+`200 OK` means a chain tip was read **and** the ledger parsed. If the RPC is unreachable or the
+ledger cannot be read, the answer is `503` with the failing side named so an orchestrator can keep
+the instance out of rotation:
+
+```json
+{ "status": "unavailable", "reason": "chain: rpc error: 429 Too Many Requests" }
+```
+
+Wire `/healthz` to a liveness probe and `/readyz` to a readiness probe. A load balancer pointed at
+`/healthz` alone would keep sending report requests to a process whose RPC has been rate-limited;
+pointed at `/readyz`, it drains that instance instead.
 
 ## `GET /api/v1/reconcile`
 

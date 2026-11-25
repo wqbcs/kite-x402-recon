@@ -7,6 +7,10 @@ All notable changes to this project are documented here. Format follows
 
 ### Added
 
+- `GET /readyz`: readiness separate from liveness. It reads a chain tip and parses the ledger, then
+  answers `200` with `{status, chain_id, tip, ledger, records}` or `503` naming the failing side
+  (`chain:` or `ledger:`). `/healthz` still never touches an upstream, so a load balancer can use the
+  pair to drain an instance whose RPC has been rate-limited instead of routing reports into it.
 - `report.receiver`: the address the verdicts were taken against, normalized to lowercase. A saved
   report can now be re-verified without guessing which wallet the run was aimed at; "paid to the
   wrong address" is meaningless unless the expected address travels with the finding.

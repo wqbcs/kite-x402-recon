@@ -7,7 +7,7 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
 use kite_x402_recon::chain::ChainClient;
-use kite_x402_recon::ledger::MemoryLedger;
+use kite_x402_recon::ledger::{FileLedger, MemoryLedger};
 use kite_x402_recon::mock::FixtureChain;
 use kite_x402_recon::reconcile::Reconciler;
 use kite_x402_recon::server::{router, AppState};
@@ -74,6 +74,51 @@ fn healthz_is_open_and_names_the_mode() {
     };
     assert_eq!(response.0, StatusCode::OK);
     assert_eq!(response.1["mode"], "mock");
+}
+
+#[test]
+fn readyz_touches_both_inputs_and_needs_no_token() {
+    // A probe that needed a bearer token could not be wired into a container
+    // readiness check, and one that only checked liveness would stay 200 with a
+    // dead RPC. Assert both halves: it reports the tip it actually read and the
+    // size of the ledger it actually parsed.
+    let app = router(state(Some("s3cret")));
+    let response = match blocking_request(app, "/readyz", None) {
+        Ok(response) => response,
+        Err(e) => panic!("{e}"),
+    };
+    assert_eq!(response.0, StatusCode::OK);
+    assert_eq!(response.1["status"], "ready");
+    assert_eq!(response.1["tip"], 1000);
+    assert_eq!(response.1["records"], 7);
+    assert_eq!(response.1["chain_id"], 2368);
+    assert!(
+        response.1["ledger"]
+            .as_str()
+            .unwrap_or_default()
+            .starts_with("memory"),
+        "{}",
+        response.1
+    );
+}
+
+#[test]
+fn readyz_is_503_when_the_ledger_cannot_be_read() {
+    let mut app_state = state(None);
+    app_state.ledger = Arc::new(FileLedger::new(
+        std::path::Path::new("fixtures/absent_ledger.jsonl"),
+        500,
+    ));
+    let app = router(app_state);
+    let response = match blocking_request(app, "/readyz", None) {
+        Ok(response) => response,
+        Err(e) => panic!("{e}"),
+    };
+    assert_eq!(response.0, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(response.1["status"], "unavailable");
+    let reason = response.1["reason"].as_str().unwrap_or_default();
+    assert!(reason.starts_with("ledger:"), "{reason}");
+    assert!(reason.contains("absent_ledger.jsonl"), "{reason}");
 }
 
 #[test]
