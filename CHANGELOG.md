@@ -7,6 +7,10 @@ All notable changes to this project are documented here. Format follows
 
 ### Added
 
+- `GET /api/v1/reconcile?format=csv`: the read-only endpoint serves the same CSV export as the
+  CLI (`text/csv; charset=utf-8`, `Content-Disposition: attachment; filename="reconcile-<from>-<to>.csv"`),
+  so a spreadsheet or incident archive can pull evidence without shell access. Unknown `format`
+  values return `400` instead of silently falling back to JSON.
 - `scan --format csv`: the reconciliation as RFC 4180 CSV — one row per ledger record plus one row
   per orphan transfer (`kind` tells them apart), columns
   `kind,id,outcome,pay_to,payer,amount_atomic,tx_hash,block_number,confirmations,recovered_by,reason`.

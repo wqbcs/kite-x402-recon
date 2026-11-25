@@ -45,8 +45,14 @@ can render a historical audit without a second deployment. `at_block=0`, a non-n
 block ahead of the live tip returns `400` with `{"error": "..."}`. Each anchored request is a clone
 of the shared reconciler, so concurrent live requests are unaffected.
 
-Success: `200 OK`, `Content-Type: application/json`,
-`Cache-Control: max-age=<server.refresh_seconds>`.
+Optional query parameter `format=csv` returns the same RFC 4180 export as `scan --format csv`
+instead of JSON: `Content-Type: text/csv; charset=utf-8` plus
+`Content-Disposition: attachment; filename="reconcile-<from>-<to>.csv"`, so the window is named in
+the download. `format=json` (or omitting it) keeps the default. Any other value is a `400` rather
+than a silent fallback to JSON.
+
+Success: `200 OK`, `Content-Type: application/json` (or `text/csv; charset=utf-8` for
+`format=csv`), `Cache-Control: max-age=<server.refresh_seconds>`.
 
 ```json
 {
@@ -113,12 +119,12 @@ All errors are JSON: `{"error": "<message>"}`.
 
 | Status | When |
 | --- | --- |
+| 400 | Invalid `at_block` (zero, non-numeric, ahead of the tip) or unsupported `format`. |
 | 401 | Missing/invalid bearer token. |
 | 502 | Ledger read or chain RPC failed; message names the failing step. |
 | 500 | Serialisation failure (should not happen; reported rather than panicking). |
 
-There is no request body, so no 400 class beyond auth. Retries are the client's business; the
-endpoint is idempotent per `now`.
+There is no request body. Retries are the client's business; the endpoint is idempotent per `now`.
 
 ## Example
 
@@ -133,4 +139,5 @@ curl -s -H "Authorization: Bearer dev-token" localhost:8081/api/v1/reconcile \
 ## Contract tests
 
 `tests/http_api.rs` exercises the router directly (no port binding): health, 401 without token,
-200 with token, and the exact summary of the bundled fixtures.
+200 with token, the exact summary of the bundled fixtures, `at_block` replay and its `400` cases,
+and the CSV representation (content type, header row, row count and download filename).

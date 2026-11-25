@@ -90,23 +90,68 @@ async fn reconcile(
     }
     let now = now_unix();
     match reconciler.report(&*state.ledger, now).await {
-        Ok(report) => {
-            let body = crate::report::to_json(&report).unwrap_or_else(|e| {
-                json!({ "error": format!("failed to serialise report: {e}") }).to_string()
-            });
-            let mut response = (StatusCode::OK, body).into_response();
-            response.headers_mut().insert(
-                header::CONTENT_TYPE,
-                header::HeaderValue::from_static("application/json"),
-            );
-            let cache =
-                header::HeaderValue::from_str(&format!("max-age={}", state.refresh_seconds))
-                    .unwrap_or_else(|_| header::HeaderValue::from_static("no-store"));
-            response.headers_mut().insert(header::CACHE_CONTROL, cache);
-            response
-        }
+        Ok(report) => report_response(&state, &report, &params),
         Err(e) => error_response(StatusCode::BAD_GATEWAY, &e.to_string()),
     }
+}
+
+/// Serialises a report in the representation the caller asked for.
+///
+/// JSON stays the default so existing consumers keep working; `format=csv`
+/// serves the same bytes the CLI writes, which lets a spreadsheet or cron job
+/// pull an evidence file straight from the read-only endpoint.
+fn report_response(
+    state: &AppState,
+    report: &crate::model::Report,
+    params: &HashMap<String, String>,
+) -> Response {
+    let format = match params.get("format").map(String::as_str) {
+        None | Some("json") => OutputFormat::Json,
+        Some("csv") => OutputFormat::Csv,
+        Some(other) => {
+            return error_response(
+                StatusCode::BAD_REQUEST,
+                &format!("format must be json or csv, got {other:?}"),
+            )
+        }
+    };
+    let (content_type, body, disposition) = match format {
+        OutputFormat::Json => (
+            "application/json",
+            crate::report::to_json(report).unwrap_or_else(|e| {
+                json!({ "error": format!("failed to serialise report: {e}") }).to_string()
+            }),
+            None,
+        ),
+        OutputFormat::Csv => (
+            "text/csv; charset=utf-8",
+            crate::report::to_csv(report),
+            Some(format!(
+                "attachment; filename=\"reconcile-{}-{}.csv\"",
+                report.search.from_block, report.search.to_block
+            )),
+        ),
+    };
+    let mut response = (StatusCode::OK, body).into_response();
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        header::HeaderValue::from_static(content_type),
+    );
+    if let Some(value) = disposition.and_then(|raw| header::HeaderValue::from_str(&raw).ok()) {
+        response
+            .headers_mut()
+            .insert(header::CONTENT_DISPOSITION, value);
+    }
+    let cache = header::HeaderValue::from_str(&format!("max-age={}", state.refresh_seconds))
+        .unwrap_or_else(|_| header::HeaderValue::from_static("no-store"));
+    response.headers_mut().insert(header::CACHE_CONTROL, cache);
+    response
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum OutputFormat {
+    Json,
+    Csv,
 }
 
 fn error_response(status: StatusCode, message: &str) -> Response {

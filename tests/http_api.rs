@@ -143,6 +143,16 @@ fn blocking_request(
     path: &str,
     token: Option<&str>,
 ) -> std::result::Result<(StatusCode, Value), String> {
+    let (status, _headers, bytes) = blocking_request_raw(app, path, token)?;
+    let value: Value = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+    Ok((status, value))
+}
+
+fn blocking_request_raw(
+    app: axum::Router,
+    path: &str,
+    token: Option<&str>,
+) -> std::result::Result<(StatusCode, axum::http::HeaderMap, Vec<u8>), String> {
     let mut request = Request::builder().uri(path);
     if let Some(token) = token {
         request = request.header("authorization", format!("Bearer {token}"));
@@ -157,10 +167,70 @@ fn blocking_request(
         .block_on(async move { app.oneshot(request).await })
         .map_err(|e| e.to_string())?;
     let status = response.status();
+    let headers = response.headers().clone();
     let bytes = runtime
         .block_on(async move { response.into_body().collect().await })
         .map_err(|e| e.to_string())?
-        .to_bytes();
-    let value: Value = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
-    Ok((status, value))
+        .to_bytes()
+        .to_vec();
+    Ok((status, headers, bytes))
+}
+
+/// `format=csv` must serve the exact export the CLI writes, so an evidence
+/// file can be pulled from the read-only endpoint without a second tool.
+#[test]
+fn csv_format_serves_the_same_export_as_the_cli() {
+    let app = router(state(Some("s3cret")));
+    let response = match blocking_request_raw(app, "/api/v1/reconcile?format=csv", Some("s3cret")) {
+        Ok(response) => response,
+        Err(e) => panic!("{e}"),
+    };
+    assert_eq!(response.0, StatusCode::OK);
+    assert_eq!(
+        response.1.get("content-type").and_then(|v| v.to_str().ok()),
+        Some("text/csv; charset=utf-8")
+    );
+    let text = String::from_utf8(response.2).unwrap_or_else(|e| panic!("utf8: {e}"));
+    assert_eq!(
+        text.lines().next(),
+        Some(
+            "kind,id,outcome,pay_to,payer,amount_atomic,tx_hash,block_number,confirmations,recovered_by,reason"
+        )
+    );
+    assert_eq!(text.lines().count(), 9, "{text}");
+    assert!(text.contains("payment,inv_search,MATCHED,"), "{text}");
+    assert!(text.contains("orphan,"), "{text}");
+}
+
+#[test]
+fn csv_download_names_the_replayed_window() {
+    let app = router(state(Some("s3cret")));
+    let response = match blocking_request_raw(
+        app,
+        "/api/v1/reconcile?format=csv&at_block=900",
+        Some("s3cret"),
+    ) {
+        Ok(response) => response,
+        Err(e) => panic!("{e}"),
+    };
+    assert_eq!(response.0, StatusCode::OK);
+    assert_eq!(
+        response
+            .1
+            .get("content-disposition")
+            .and_then(|v| v.to_str().ok()),
+        Some("attachment; filename=\"reconcile-600-900.csv\"")
+    );
+}
+
+#[test]
+fn unknown_format_is_rejected_instead_of_silently_serving_json() {
+    let app = router(state(Some("s3cret")));
+    let response = match blocking_request(app, "/api/v1/reconcile?format=xml", Some("s3cret")) {
+        Ok(response) => response,
+        Err(e) => panic!("{e}"),
+    };
+    assert_eq!(response.0, StatusCode::BAD_REQUEST);
+    let body = response.1["error"].as_str().unwrap_or_default();
+    assert!(body.contains("format must be json or csv"), "{body}");
 }
