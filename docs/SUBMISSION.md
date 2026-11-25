@@ -87,12 +87,13 @@ Evidence supplied for registration review:
 | 2026-11-25 | `ab9f191` | `serve ?format=csv`: the same RFC 4180 export over HTTP |
 | 2026-11-25 | `fbd6653` | docs: CSV from the HTTP surface (headers, body, 400 on unknown format) |
 | 2026-11-25 | `5a11fde` | `report.receiver`: an archived report names the wallet it audited |
+| 2026-11-25 | `f3d4def` | `serve /readyz`: readiness reads a tip and the ledger, `503` names the failing side |
 
 ## 4. Test, build and lint results
 
 | Check | Command | Result |
 | --- | --- | --- |
-| Tests | `cargo test --all-targets` | 68 passed (49 unit, 5 capture CLI, 6 scan CLI, 8 HTTP), 0 failed |
+| Tests | `cargo test --all-targets` | 70 passed (49 unit, 5 capture CLI, 6 scan CLI, 10 HTTP), 0 failed |
 | Lints | `cargo clippy --all-targets -- -D warnings` | clean |
 | Format | `cargo fmt --all --check` | clean |
 | Docs | `cargo doc --no-deps` | no warnings |
