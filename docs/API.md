@@ -58,6 +58,7 @@ Success: `200 OK`, `Content-Type: application/json` (or `text/csv; charset=utf-8
 {
   "mode": "mock",
   "chain_id": 2368,
+  "receiver": "0x2222222222222222222222222222222222222222",
   "generated_at": "2026-11-22T15:31:30Z",
   "window_minutes": 60,
   "chain_tip": 1000,
@@ -95,6 +96,9 @@ Success: `200 OK`, `Content-Type: application/json` (or `text/csv; charset=utf-8
 Field notes:
 
 - `mode` is always present; `mock` means the numbers came from a fixture, never from a chain.
+- `receiver` is the address the verdicts were taken against, normalized to lowercase. It has to
+  travel with the report: a "paid to the wrong address" finding is only meaningful relative to an
+  expected address, and two runs with different receivers otherwise look identical.
 - `anchored` is `true` when `chain_tip` is an explicit `--at-block` anchor rather than the live tip,
   so an old-looking tip in a report is explainable instead of being read as a stalled chain.
 - `search` is the block range the verdicts came from. Without it a reader cannot tell "the money is

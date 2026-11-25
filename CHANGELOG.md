@@ -7,6 +7,9 @@ All notable changes to this project are documented here. Format follows
 
 ### Added
 
+- `report.receiver`: the address the verdicts were taken against, normalized to lowercase. A saved
+  report can now be re-verified without guessing which wallet the run was aimed at; "paid to the
+  wrong address" is meaningless unless the expected address travels with the finding.
 - `GET /api/v1/reconcile?format=csv`: the read-only endpoint serves the same CSV export as the
   CLI (`text/csv; charset=utf-8`, `Content-Disposition: attachment; filename="reconcile-<from>-<to>.csv"`),
   so a spreadsheet or incident archive can pull evidence without shell access. Unknown `format`

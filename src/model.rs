@@ -159,6 +159,13 @@ pub struct Report {
     /// for on-chain evidence.
     pub mode: String,
     pub chain_id: u64,
+    /// Receiver address the ledger records were verified against.
+    ///
+    /// A saved report has to name it: "paid to the wrong address" is only a
+    /// verdict relative to an expected address, and without it a reader cannot
+    /// tell whether the audit was aimed at the right wallet or the answers
+    /// changed when the configuration did.
+    pub receiver: String,
     pub generated_at: String,
     pub window_minutes: u64,
     /// Tip the verdicts were taken at. When `anchored` is set this is the

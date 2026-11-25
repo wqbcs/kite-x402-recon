@@ -213,6 +213,7 @@ mod tests {
         Report {
             mode: "mock".into(),
             chain_id: 2368,
+            receiver: "0x2222222222222222222222222222222222222222".into(),
             generated_at: "2026-11-22T10:00:00Z".into(),
             window_minutes: 60,
             chain_tip: 1000,

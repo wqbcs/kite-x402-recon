@@ -242,6 +242,7 @@ impl Reconciler {
         Ok(Report {
             mode: self.mode.clone(),
             chain_id: self.chain.chain_id(),
+            receiver: self.receiver.clone(),
             generated_at: format_unix(now),
             window_minutes: self.window_minutes,
             chain_tip: tip,
@@ -615,6 +616,38 @@ mod tests {
         assert_eq!(report.records[0].outcome, Outcome::Matched);
         assert_eq!(report.records[0].confirmations, Some(11));
         assert_eq!(report.orphans.len(), 0);
+    }
+
+    /// A saved report must say which address the verdicts were relative to.
+    /// "pay_to does not match the configured receiver" only means something if
+    /// the report names that receiver, and a mixed-case configuration value
+    /// must be reported in the same normalized form the verdicts used.
+    #[test]
+    fn report_names_the_normalized_receiver() {
+        let report = match block_on(
+            reconciler(in_memory(2368, 1_000, vec![], vec![]), 1)
+                .report(&MemoryLedger::new(vec![]), now()),
+        ) {
+            Ok(report) => report,
+            Err(e) => panic!("reconcile failed: {e}"),
+        };
+        assert_eq!(report.receiver, RECEIVER);
+
+        let mixed_case = Reconciler::new(
+            Arc::new(in_memory(2368, 1_000, vec![], vec![])),
+            format!("  {}  ", RECEIVER.to_ascii_uppercase()),
+            TOKEN,
+            60,
+            1,
+            2_000,
+            500,
+            "mock",
+        );
+        let report = match block_on(mixed_case.report(&MemoryLedger::new(vec![]), now())) {
+            Ok(report) => report,
+            Err(e) => panic!("reconcile failed: {e}"),
+        };
+        assert_eq!(report.receiver, RECEIVER);
     }
 
     #[test]
