@@ -11,10 +11,11 @@ checkout of `main` on 2026-11-22.
 | Lints | `cargo clippy --all-targets -- -D warnings` | clean |
 | Tests | `cargo test --all-targets` | 70 passed (49 unit, 5 capture CLI, 6 scan CLI, 10 HTTP), 0 failed |
 | Docs | `cargo doc --no-deps` | no warnings |
-| CI | GitHub Actions `CI` on push `5a11fde` | green (fmt+clippy+test on ubuntu-latest and windows-latest, rustdoc): <https://github.com/wqbcs/kite-x402-recon/actions/runs/45589588102> |
+| CI | GitHub Actions `CI` on push `f3d4def` | green (fmt+clippy+test on ubuntu-latest and windows-latest, rustdoc): <https://github.com/wqbcs/kite-x402-recon/actions/runs/45593536577> |
 
-Earlier green runs in this series: `ab9f191` <https://github.com/wqbcs/kite-x402-recon/actions/runs/45539165762>
-and `fbd6653` <https://github.com/wqbcs/kite-x402-recon/actions/runs/45539589446>.
+Earlier green runs in this series: `ab9f191` <https://github.com/wqbcs/kite-x402-recon/actions/runs/45539165762>,
+`fbd6653` <https://github.com/wqbcs/kite-x402-recon/actions/runs/45539589446> and `5a11fde`
+<https://github.com/wqbcs/kite-x402-recon/actions/runs/45589588102>.
 
 CI runs: <https://github.com/wqbcs/kite-x402-recon/actions/runs/45039227007> (`f30ed70`),
 <https://github.com/wqbcs/kite-x402-recon/actions/runs/45040413110> (`7ab7a80`), and the latest on
