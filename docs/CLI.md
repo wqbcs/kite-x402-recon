@@ -41,7 +41,8 @@ Reconciles one ledger batch.
 | Option | Default | Meaning |
 | --- | --- | --- |
 | `--format text\|json\|markdown\|csv` | `text` | Output rendering. `csv` is RFC 4180, one row per record plus one per orphan (`kind` distinguishes them), for spreadsheets. |
-| `--strict` | off | Exit `2` when anything is `pending`. |
+| `--fail-on <classes>` | `differences` | Which finding classes make the run exit non-zero: `differences` (`mismatched`/`failed`), `orphans`, `unknown`, `pending`, `any`, `none`. Comma-separate to gate on several (`--fail-on differences,orphans`); classes union, and `none` reports everything while staying green. |
+| `--strict` | off | Exit `2` when anything is `pending`. Equivalent to adding `pending` to `--fail-on`. |
 | `--out <path>` | – | Also write the rendered report to this file. |
 | `--at-block <n>` | current tip | Audit as of this block: the aligned range, orphan scan and confirmation counts all move with it, so a past window can be replayed later with the same verdicts. Refused (`78`) when ahead of the tip. |
 | `--align-window` | on | Force alignment for this run: search a block range derived from `reconcile.window_minutes` and the chain's measured block time instead of `reconcile.search_lookback_blocks`. Only needed when config or `RECON_ALIGN_WINDOW` turned it off. |
@@ -75,6 +76,12 @@ recon --config recon.toml scan --format csv --out report.csv
 
 # CI gate: also fail when nothing is final yet
 recon --config recon.toml scan --strict
+
+# CI gate on money and missing records only; unknown stays a warning
+recon --config recon.toml scan --fail-on differences,orphans
+
+# Report-only run: every finding is printed, the exit code stays 0
+recon --config recon.toml scan --fail-on none --out nightly-report.csv --format csv
 
 # Audit a one-day window: search exactly the blocks that one day covers
 recon --config recon.toml scan --align-window
@@ -171,15 +178,19 @@ recon --config recon.toml capture --window-minutes 1440 --out captured-24h.jsonl
 
 | Code | Meaning |
 | --- | --- |
-| 0 | Clean (pending allowed unless `--strict`). |
-| 1 | Differences: at least one `mismatched` or `failed`. |
-| 2 | `--strict` and at least one `pending`. |
+| 0 | Clean: no class selected through `--fail-on` is present (pending is allowed unless asked for). |
+| 1 | At least one selected finding class is present: `differences` (`mismatched`/`failed`), `orphans` or `unknown`. |
+| 2 | `pending` is selected (`--strict` or `--fail-on pending`) and at least one record is still pending. |
 | 69 | Chain/RPC failure. |
 | 70 | Internal failure (serialisation, server crash). |
 | 71 | Cannot bind the API address. |
 | 73 | Cannot write `--out`. |
 | 74 | Cannot write to stdout. |
 | 78 | Configuration invalid or unreadable. |
+
+The default gate is `differences`, which is the documented `0/1/2` contract: a run that only has
+orphans or unknown records exits `0` unless you ask it not to. Money differences always win over
+pending — a run with both exits `1`, because "wrong" is more serious than "not decided yet".
 
 `scan` always finishes a full pass before exiting, so exit code `1` still comes with a complete
 report of every record.

@@ -193,13 +193,100 @@ fn csv_field(value: &str) -> String {
 
 /// Exit code for CLI and CI use: 0 clean, 1 differences, 2 pending but no
 /// differences when `strict` is off.
-pub fn exit_code(report: &Report, strict: bool) -> i32 {
-    if report.summary.differences() > 0 {
+///
+/// A run can be clean, can carry money-level findings, or can be merely
+/// undecided, and CI gates usually care about only one of those. Which finding
+/// classes count is chosen by the caller through [`Gate`] instead of inferred
+/// here.
+pub fn exit_code(report: &Report, gate: Gate) -> i32 {
+    let summary = &report.summary;
+    let findings = (gate.differences && summary.differences() > 0)
+        || (gate.orphans && summary.orphans > 0)
+        || (gate.unknown && summary.unknown > 0);
+    if findings {
         1
-    } else if strict && report.summary.pending > 0 {
+    } else if gate.pending && summary.pending > 0 {
         2
     } else {
         0
+    }
+}
+
+/// One finding class a scan can gate on.
+///
+/// These are the groups a report already distinguishes; the gate only decides
+/// which of them turn into a non-zero exit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FindingClass {
+    /// `mismatched` or `failed`: the ledger and the chain disagree about money.
+    Differences,
+    /// Chain transfers with no ledger record behind them.
+    Orphans,
+    /// Records whose transaction the chain could not resolve.
+    Unknown,
+    /// Records nothing is final about yet.
+    Pending,
+    /// Every class above.
+    Any,
+    /// No class at all: findings are reported but never fail the run.
+    None,
+}
+
+/// The finding classes that make a scan exit non-zero.
+///
+/// The default matches the documented `0/1/2` contract: differences fail, and
+/// pending fails only when the caller asks for it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Gate {
+    differences: bool,
+    orphans: bool,
+    unknown: bool,
+    pending: bool,
+}
+
+impl Default for Gate {
+    fn default() -> Self {
+        Self {
+            differences: true,
+            orphans: false,
+            unknown: false,
+            pending: false,
+        }
+    }
+}
+
+impl Gate {
+    /// Build the gate from the classes a caller asked for. Classes union, so
+    /// `any` next to a named class is the same as `any` alone.
+    pub fn from_classes(classes: &[FindingClass]) -> Self {
+        let mut gate = Self {
+            differences: false,
+            orphans: false,
+            unknown: false,
+            pending: false,
+        };
+        for class in classes {
+            match class {
+                FindingClass::Differences => gate.differences = true,
+                FindingClass::Orphans => gate.orphans = true,
+                FindingClass::Unknown => gate.unknown = true,
+                FindingClass::Pending => gate.pending = true,
+                FindingClass::Any => {
+                    gate.differences = true;
+                    gate.orphans = true;
+                    gate.unknown = true;
+                    gate.pending = true;
+                }
+                FindingClass::None => {}
+            }
+        }
+        gate
+    }
+
+    /// Also fail (`2`) when nothing is final yet.
+    pub fn with_pending(mut self) -> Self {
+        self.pending = true;
+        self
     }
 }
 
@@ -324,11 +411,93 @@ mod tests {
     #[test]
     fn exit_codes_distinguish_findings_from_pending() {
         let mut report = sample();
-        assert_eq!(exit_code(&report, false), 1);
+        assert_eq!(exit_code(&report, Gate::default()), 1);
         report.summary.mismatched = 0;
         report.summary.pending = 1;
-        assert_eq!(exit_code(&report, false), 0);
-        assert_eq!(exit_code(&report, true), 2);
+        assert_eq!(exit_code(&report, Gate::default()), 0);
+        assert_eq!(exit_code(&report, Gate::default().with_pending()), 2);
+    }
+
+    #[test]
+    fn a_gate_selects_its_own_finding_classes() {
+        // The fixture-like shape: mismatched + failed, one orphan, two unknown,
+        // one pending.
+        let mut report = sample();
+        report.summary.mismatched = 1;
+        report.summary.failed = 1;
+        report.summary.orphans = 1;
+        report.summary.unknown = 2;
+        report.summary.pending = 1;
+
+        // Default gate: money differences fail, orphans and unknown do not.
+        assert_eq!(exit_code(&report, Gate::default()), 1);
+        assert_eq!(
+            exit_code(&report, Gate::from_classes(&[FindingClass::Orphans])),
+            1
+        );
+        assert_eq!(
+            exit_code(&report, Gate::from_classes(&[FindingClass::Unknown])),
+            1
+        );
+
+        // A gate that asks for nothing ignores every finding class.
+        assert_eq!(
+            exit_code(&report, Gate::from_classes(&[FindingClass::None])),
+            0
+        );
+
+        // Pending alone is still code 2, not 1: it is undecided, not wrong.
+        assert_eq!(
+            exit_code(&report, Gate::from_classes(&[FindingClass::Pending])),
+            2
+        );
+    }
+
+    #[test]
+    fn any_covers_the_four_named_classes() {
+        assert_eq!(
+            Gate::from_classes(&[FindingClass::Any]),
+            Gate::from_classes(&[
+                FindingClass::Differences,
+                FindingClass::Orphans,
+                FindingClass::Unknown,
+                FindingClass::Pending,
+            ])
+        );
+        // Naming `any` next to another class changes nothing: classes union.
+        assert_eq!(
+            Gate::from_classes(&[FindingClass::Any, FindingClass::Orphans]),
+            Gate::from_classes(&[FindingClass::Any])
+        );
+    }
+
+    #[test]
+    fn a_gate_with_several_classes_fails_on_any_of_them() {
+        let mut report = sample();
+        report.summary.mismatched = 0;
+        report.summary.orphans = 1;
+        report.summary.unknown = 0;
+        assert_eq!(
+            exit_code(
+                &report,
+                Gate::from_classes(&[FindingClass::Unknown, FindingClass::Orphans])
+            ),
+            1
+        );
+    }
+
+    #[test]
+    fn orphans_fail_only_when_the_gate_selects_them() {
+        let mut report = sample();
+        report.summary.mismatched = 0;
+        report.summary.orphans = 1;
+        // The default gate reports the orphan but stays green: an operator
+        // opting into `orphans` is the one who wants it to fail.
+        assert_eq!(exit_code(&report, Gate::default()), 0);
+        assert_eq!(
+            exit_code(&report, Gate::from_classes(&[FindingClass::Orphans])),
+            1
+        );
     }
 
     #[test]

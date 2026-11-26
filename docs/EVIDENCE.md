@@ -272,6 +272,27 @@ curl -s -o /dev/null -w "%{http_code}\n" -H "Authorization: Bearer dev-token" \
 filename and the `400`. The CLI, the served JSON and the served CSV come from the same `Report`,
 so the three views cannot disagree.
 
+## Gate policy (2026-11-26)
+
+Same fixture batch (7 records: 2 matched, 1 mismatched, 1 failed, 1 pending, 2 unknown, 1 orphan),
+one flag away from each other. Windows build, `--format json`, exit code read from
+`$LASTEXITCODE`:
+
+```bash
+recon --config recon.example.toml scan --format json --fail-on differences   # exit 1
+recon --config recon.example.toml scan --format json --fail-on orphans       # exit 1
+recon --config recon.example.toml scan --format json --fail-on unknown       # exit 1
+recon --config recon.example.toml scan --format json --fail-on pending       # exit 2
+recon --config recon.example.toml scan --format json --fail-on none          # exit 0
+recon --config recon.example.toml scan --format json --fail-on differences,orphans  # exit 1
+```
+
+The report body is identical in all six runs; only the exit code moves. That is the point of the
+flag: the verdict does not change, the CI gate does. `tests/cli_scan.rs` pins `none` (exit 0 with
+`mismatched` and `failed` still counted in the summary), `unknown` alone, the comma union, and —
+against a ledger that only holds the pending record — `pending` (`2`), `differences` (`0`) and
+`orphans` (`1`).
+
 ## Readiness vs liveness (2026-11-25)
 
 `/healthz` answers without touching the chain, which is right for liveness and wrong for a load

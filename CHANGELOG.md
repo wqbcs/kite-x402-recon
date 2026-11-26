@@ -7,6 +7,13 @@ All notable changes to this project are documented here. Format follows
 
 ### Added
 
+- `scan --fail-on <classes>`: choose which findings make the run exit non-zero — `differences`
+  (`mismatched`/`failed`, the default), `orphans`, `unknown`, `pending`, `any` or `none`.
+  Comma-separated classes union (`--fail-on differences,orphans`), so a CI gate can fail on money
+  differences and chain transfers with no ledger record while treating unresolved transactions as
+  warnings, and `--fail-on none` turns a run into report-only. `--strict` keeps its documented
+  meaning and now reads as "add `pending` to the gate". Exit `1` for a selected finding class, `2`
+  for `pending`, and money differences still win over pending.
 - `GET /readyz`: readiness separate from liveness. It reads a chain tip and parses the ledger, then
   answers `200` with `{status, chain_id, tip, ledger, records}` or `503` naming the failing side
   (`chain:` or `ledger:`). `/healthz` still never touches an upstream, so a load balancer can use the

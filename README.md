@@ -261,10 +261,14 @@ See [`docs/API.md`](docs/API.md) for the full contract.
 
 | Code | Meaning |
 | --- | --- |
-| 0 | No differences (pending is allowed unless `--strict`). |
-| 1 | At least one `mismatched` or `failed` record. |
-| 2 | `--strict` and something is still `pending`. |
+| 0 | No selected finding class (pending is allowed unless asked for). |
+| 1 | A selected finding class is present: `differences` (`mismatched`/`failed`, the default), `orphans` or `unknown`. |
+| 2 | `pending` is selected (`--strict` or `--fail-on pending`) and something is still pending. |
 | 69/70/71/73/74/78 | Chain error / internal / bind / write / stdout / config (sysexits-style). |
+
+`scan --fail-on <classes>` chooses which findings turn red, so a CI job can gate on money
+differences and orphaned transfers while treating unknown records as warnings, or run
+`--fail-on none` for a report-only nightly job.
 
 ## Testing
 

@@ -168,6 +168,90 @@ fn probe_reads_mock_metadata_without_network() {
 }
 
 #[test]
+fn fail_on_none_keeps_the_report_and_drops_the_failure() {
+    // The fixture has mismatched/failed records, so the default gate exits 1.
+    // `none` is the report-only mode: same findings, green exit.
+    let output = run(&[
+        "--config",
+        "recon.example.toml",
+        "scan",
+        "--format",
+        "json",
+        "--fail-on",
+        "none",
+    ]);
+    assert_eq!(output.status.code(), Some(0), "--fail-on none must exit 0");
+    let report = json_of(&output);
+    assert_eq!(report["summary"]["mismatched"], 1);
+    assert_eq!(report["summary"]["failed"], 1);
+
+    // A single named class narrows, it does not widen: `unknown` alone is 1
+    // because the fixture carries two unknown records, and it ignores the
+    // mismatched ones the default gate would have caught.
+    let narrow = run(&[
+        "--config",
+        "recon.example.toml",
+        "scan",
+        "--format",
+        "json",
+        "--fail-on",
+        "unknown",
+    ]);
+    assert_eq!(narrow.status.code(), Some(1));
+
+    // Comma-separated classes union.
+    let union = run(&[
+        "--config",
+        "recon.example.toml",
+        "scan",
+        "--format",
+        "json",
+        "--fail-on",
+        "differences,orphans",
+    ]);
+    assert_eq!(union.status.code(), Some(1));
+}
+
+#[test]
+fn fail_on_pending_and_orphans_read_the_ledger_not_the_defaults() {
+    let dir = std::env::temp_dir().join(format!("recon-cli-gate-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).ok();
+    let ledger = dir.join("only_pending.jsonl");
+    let record = r#"{"id":"inv_pending","pay_to":"0x2222222222222222222222222222222222222222","payer":"0x8888888888888888888888888888888888888888","amount_atomic":"3000","tx_hash":"0x5555555555555555555555555555555555555555555555555555555555555555","observed_at":"2026-11-22T10:04:00Z"}"#;
+    std::fs::write(&ledger, record).ok();
+
+    let scan_with = |gate: &str| {
+        let output = Command::new(env!("CARGO_BIN_EXE_recon"))
+            .args([
+                "--config",
+                "recon.example.toml",
+                "scan",
+                "--format",
+                "text",
+                "--fail-on",
+                gate,
+            ])
+            .env("RECON_LEDGER_PATH", &ledger)
+            .current_dir(env!("CARGO_MANIFEST_DIR"))
+            .output();
+        match output {
+            Ok(output) => output,
+            Err(e) => panic!("cannot run recon: {e}"),
+        }
+    };
+
+    // Nothing final yet: `pending` is undecided, so it exits 2 and not 1.
+    assert_eq!(scan_with("pending").status.code(), Some(2));
+    // The default gate ignores that pending record entirely.
+    assert_eq!(scan_with("differences").status.code(), Some(0));
+    // Chain transfers with no ledger record are orphans; gating on them
+    // catches a ledger that is missing entries the chain already settled.
+    assert_eq!(scan_with("orphans").status.code(), Some(1));
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
 fn strict_mode_distinguishes_pending_from_clean() {
     // A ledger that only has the pending record yields exit code 2 when strict.
     let dir = std::env::temp_dir().join(format!("recon-cli-{}", std::process::id()));

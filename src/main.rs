@@ -40,7 +40,13 @@ enum Command {
     Scan {
         #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
         format: OutputFormat,
+        /// Which finding classes make the run exit non-zero. Comma-separate to
+        /// gate on several at once: `differences,orphans`. `none` reports
+        /// everything but stays green.
+        #[arg(long, value_enum, value_delimiter = ',', default_value = "differences")]
+        fail_on: Vec<FailOn>,
         /// Exit 2 when anything is still pending, not only on differences.
+        /// The same as `--fail-on differences,pending`.
         #[arg(long)]
         strict: bool,
         /// Also write the rendered report to this path.
@@ -89,6 +95,37 @@ enum OutputFormat {
     Markdown,
     /// RFC 4180 CSV for spreadsheet reconciliation.
     Csv,
+}
+
+/// Finding classes `scan --fail-on` accepts. Each maps to a group the report
+/// already counts, so the flag only decides what turns red in CI.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
+enum FailOn {
+    /// `mismatched` or `failed`: the ledger and the chain disagree about money.
+    Differences,
+    /// Chain transfers with no ledger record behind them.
+    Orphans,
+    /// Records whose transaction the chain could not resolve.
+    Unknown,
+    /// Nothing final yet; exits `2`, like `--strict`.
+    Pending,
+    /// Every class above.
+    Any,
+    /// No class: findings are reported, the exit code stays `0`.
+    None,
+}
+
+impl From<FailOn> for report::FindingClass {
+    fn from(value: FailOn) -> Self {
+        match value {
+            FailOn::Differences => report::FindingClass::Differences,
+            FailOn::Orphans => report::FindingClass::Orphans,
+            FailOn::Unknown => report::FindingClass::Unknown,
+            FailOn::Pending => report::FindingClass::Pending,
+            FailOn::Any => report::FindingClass::Any,
+            FailOn::None => report::FindingClass::None,
+        }
+    }
 }
 
 fn main() -> ExitCode {
@@ -141,6 +178,7 @@ async fn run(cli: Cli) -> ExitCode {
         Command::Probe { json } => probe(&config, chain.as_ref(), json).await,
         Command::Scan {
             format,
+            fail_on,
             strict,
             out,
             align_window,
@@ -150,7 +188,7 @@ async fn run(cli: Cli) -> ExitCode {
                 &config,
                 chain,
                 format,
-                strict,
+                gate_from(&fail_on, strict),
                 out.as_deref(),
                 align_window,
                 at_block,
@@ -251,7 +289,7 @@ async fn scan(
     config: &Config,
     chain: std::sync::Arc<dyn ChainClient + Send + Sync>,
     format: OutputFormat,
-    strict: bool,
+    gate: report::Gate,
     out: Option<&std::path::Path>,
     align_window: bool,
     at_block: Option<u64>,
@@ -322,7 +360,7 @@ async fn scan(
         tracing::error!("cannot write to stdout: {e}");
         return ExitCode::from(74);
     }
-    let code = report::exit_code(&report, strict);
+    let code = report::exit_code(&report, gate);
     tracing::info!(
         total = report.summary.total,
         matched = report.summary.matched,
@@ -334,6 +372,19 @@ async fn scan(
         "scan finished"
     );
     ExitCode::from(u8::try_from(code).unwrap_or(1))
+}
+
+/// The exit gate a run asked for: `--fail-on` classes, plus `pending` when
+/// `--strict` is passed. Both accepting styles keeps old scripts working while
+/// the class list is the documented way.
+fn gate_from(classes: &[FailOn], strict: bool) -> report::Gate {
+    let selected: Vec<report::FindingClass> = classes.iter().copied().map(Into::into).collect();
+    let gate = report::Gate::from_classes(&selected);
+    if strict {
+        gate.with_pending()
+    } else {
+        gate
+    }
 }
 
 /// `recon capture`: write a ledger file from token transfers in a block range.
