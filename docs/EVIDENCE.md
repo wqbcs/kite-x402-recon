@@ -404,6 +404,7 @@ and names how each body was produced in `X-Recon-Cache`. Checks on this commit:
 | Format | `cargo fmt --all --check` | clean |
 | Lints | `cargo clippy --all-targets -- -D warnings` | clean |
 | Tests | `cargo test --all-targets` | 78 passed (53 unit, 5 capture CLI, 8 scan CLI, 12 HTTP), 0 failed |
+| CI | GitHub Actions `CI` on push `77a22cd` | green (fmt+clippy+test on ubuntu-latest and windows-latest, rustdoc): <https://github.com/wqbcs/kite-x402-recon/actions/runs/45943071164> |
 
 Live mock run, three consecutive polls of the same endpoint plus two replayed windows:
 
