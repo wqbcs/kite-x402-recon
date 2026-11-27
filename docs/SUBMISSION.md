@@ -88,16 +88,19 @@ Evidence supplied for registration review:
 | 2026-11-25 | `fbd6653` | docs: CSV from the HTTP surface (headers, body, 400 on unknown format) |
 | 2026-11-25 | `5a11fde` | `report.receiver`: an archived report names the wallet it audited |
 | 2026-11-25 | `f3d4def` | `serve /readyz`: readiness reads a tip and the ledger, `503` names the failing side |
+| 2026-11-26 | `ad511bf` | `scan --fail-on <classes>`: the caller picks which findings fail the run |
+| 2026-11-27 | `77a22cd` | `serve` keeps one report per `refresh_seconds`, `X-Recon-Cache: hit\|miss\|bypass` |
+| 2026-11-27 | `276445a` | docs: CI evidence for the refresh-window cache |
 
 ## 4. Test, build and lint results
 
 | Check | Command | Result |
 | --- | --- | --- |
-| Tests | `cargo test --all-targets` | 70 passed (49 unit, 5 capture CLI, 6 scan CLI, 10 HTTP), 0 failed |
+| Tests | `cargo test --all-targets` | 78 passed (53 unit, 5 capture CLI, 8 scan CLI, 12 HTTP), 0 failed |
 | Lints | `cargo clippy --all-targets -- -D warnings` | clean |
 | Format | `cargo fmt --all --check` | clean |
 | Docs | `cargo doc --no-deps` | no warnings |
-| CI | GitHub Actions `CI` (ubuntu-latest + windows-latest) | green on `f3d4def`: <https://github.com/wqbcs/kite-x402-recon/actions/runs/45593536577> |
+| CI | GitHub Actions `CI` (ubuntu-latest + windows-latest + rustdoc) | green on `77a22cd`: <https://github.com/wqbcs/kite-x402-recon/actions/runs/45943071164> |
 
 ## 5. Runnable demonstration
 
