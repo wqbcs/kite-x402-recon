@@ -52,6 +52,7 @@ fn state(token: Option<&str>) -> AppState {
         token: token.map(str::to_string),
         mode: "mock".to_string(),
         refresh_seconds: 30,
+        request_timeout: std::time::Duration::from_secs(15),
         cache: Default::default(),
     }
 }
@@ -239,6 +240,146 @@ fn cache_state(headers: &axum::http::HeaderMap) -> String {
         .and_then(|value| value.to_str().ok())
         .unwrap_or_default()
         .to_owned()
+}
+
+/// A chain whose tip read hangs, to exercise the request deadline.
+struct SlowChain {
+    inner: FixtureChain,
+    delay: std::time::Duration,
+}
+
+impl ChainClient for SlowChain {
+    fn chain_id(&self) -> u64 {
+        self.inner.chain_id()
+    }
+
+    fn tip<'a>(
+        &'a self,
+    ) -> kite_x402_recon::chain::BoxFuture<'a, kite_x402_recon::error::Result<u64>> {
+        let delay = self.delay;
+        Box::pin(async move {
+            tokio::time::sleep(delay).await;
+            self.inner.tip().await
+        })
+    }
+
+    fn receipt<'a>(
+        &'a self,
+        tx_hash: &'a str,
+    ) -> kite_x402_recon::chain::BoxFuture<
+        'a,
+        kite_x402_recon::error::Result<Option<kite_x402_recon::chain::Receipt>>,
+    > {
+        self.inner.receipt(tx_hash)
+    }
+
+    fn find_transfers<'a>(
+        &'a self,
+        query: kite_x402_recon::chain::TransferQuery,
+    ) -> kite_x402_recon::chain::BoxFuture<
+        'a,
+        kite_x402_recon::error::Result<Vec<kite_x402_recon::chain::Transfer>>,
+    > {
+        self.inner.find_transfers(query)
+    }
+
+    fn token_decimals<'a>(
+        &'a self,
+    ) -> kite_x402_recon::chain::BoxFuture<'a, kite_x402_recon::error::Result<u8>> {
+        self.inner.token_decimals()
+    }
+
+    fn token_symbol<'a>(
+        &'a self,
+    ) -> kite_x402_recon::chain::BoxFuture<'a, kite_x402_recon::error::Result<String>> {
+        self.inner.token_symbol()
+    }
+
+    fn block_timestamp<'a>(
+        &'a self,
+        number: u64,
+    ) -> kite_x402_recon::chain::BoxFuture<'a, kite_x402_recon::error::Result<u64>> {
+        self.inner.block_timestamp(number)
+    }
+}
+
+fn slow_state(
+    token: Option<&str>,
+    delay: std::time::Duration,
+    timeout: std::time::Duration,
+) -> AppState {
+    let base = state(token);
+    let fixture = match FixtureChain::load(Path::new("fixtures/chain_mock.json")) {
+        Ok(chain) => chain,
+        Err(e) => panic!("fixture: {e}"),
+    };
+    let records = match std::fs::read_to_string("fixtures/ledger.jsonl") {
+        Ok(raw) => raw
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .filter_map(|line| serde_json::from_str(line).ok())
+            .collect::<Vec<_>>(),
+        Err(e) => panic!("ledger: {e}"),
+    };
+    AppState {
+        reconciler: Arc::new(
+            Reconciler::new(
+                Arc::new(SlowChain {
+                    inner: fixture,
+                    delay,
+                }),
+                "0x2222222222222222222222222222222222222222",
+                "",
+                60,
+                1,
+                2000,
+                500,
+                "mock",
+            )
+            .with_alignment(true),
+        ),
+        ledger: Arc::new(MemoryLedger::new(records)),
+        request_timeout: timeout,
+        ..base
+    }
+}
+
+#[test]
+fn a_chain_that_never_answers_ends_the_request_instead_of_pinning_it() {
+    // The cache lock is held across the reconciliation, so an unbounded read
+    // would park the request and every poll queued behind it. The deadline
+    // turns that into a `504` and leaves the window empty for the next poll.
+    let app = router(slow_state(
+        Some("s3cret"),
+        std::time::Duration::from_secs(5),
+        std::time::Duration::from_millis(80),
+    ));
+    let (status, headers, body) =
+        match blocking_request_raw(app.clone(), "/api/v1/reconcile", Some("s3cret")) {
+            Ok(response) => response,
+            Err(e) => panic!("{e}"),
+        };
+    assert_eq!(status, StatusCode::GATEWAY_TIMEOUT);
+    assert!(
+        headers.get("x-recon-cache").is_none(),
+        "a timeout is not a report, so it must not claim a cache state"
+    );
+    let body = serde_json::from_slice::<Value>(&body).unwrap_or_else(|e| panic!("{e}"));
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("did not finish"),
+        "unexpected body: {body}"
+    );
+
+    let (status, _, body) = match blocking_request_raw(app, "/readyz", None) {
+        Ok(response) => response,
+        Err(e) => panic!("{e}"),
+    };
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    let body = serde_json::from_slice::<Value>(&body).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(body["status"], "unavailable");
 }
 
 fn blocking_request(

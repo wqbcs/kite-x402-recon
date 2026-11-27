@@ -137,6 +137,9 @@ pub struct ServerConfig {
     /// is unauthenticated, which is only acceptable on a loopback bind.
     pub api_token_env: String,
     pub refresh_seconds: u64,
+    /// Upper bound on one reconciliation behind a request. Without it a hung
+    /// chain RPC holds the single-flight lock and every poll waits forever.
+    pub request_timeout_seconds: u64,
 }
 
 impl Default for ServerConfig {
@@ -145,6 +148,7 @@ impl Default for ServerConfig {
             bind: "127.0.0.1:8081".to_string(),
             api_token_env: "RECON_API_TOKEN".to_string(),
             refresh_seconds: 30,
+            request_timeout_seconds: 15,
         }
     }
 }
@@ -266,6 +270,11 @@ impl Config {
                 ReconError::Config("RECON_REFRESH_SECONDS must be an integer".into())
             })?;
         }
+        if let Some(value) = env("RECON_REQUEST_TIMEOUT_SECONDS") {
+            self.server.request_timeout_seconds = value.parse().map_err(|_| {
+                ReconError::Config("RECON_REQUEST_TIMEOUT_SECONDS must be an integer".into())
+            })?;
+        }
         if let Some(value) = env("RECON_MOCK_FIXTURE") {
             self.mock.fixture = value;
         }
@@ -331,6 +340,11 @@ impl Config {
         if !(1..=3_600).contains(&self.server.refresh_seconds) {
             return Err(ReconError::Config(
                 "server.refresh_seconds must be 1..=3600".into(),
+            ));
+        }
+        if !(1..=300).contains(&self.server.request_timeout_seconds) {
+            return Err(ReconError::Config(
+                "server.request_timeout_seconds must be 1..=300".into(),
             ));
         }
         if self.server.bind.trim().is_empty() {
@@ -490,6 +504,29 @@ mod tests {
         cfg.ledger.url.clear();
         assert!(cfg.validate().is_err());
         cfg.ledger.url = "https://gateway.example.com/settlements".to_string();
+        assert!(cfg.validate().is_ok());
+    }
+
+    #[test]
+    fn server_bounds_are_enforced() {
+        // A deadline that never fires (0) or outlives any sane probe (hours) is
+        // the same outage the timeout exists to prevent, so both are rejected
+        // at startup rather than discovered in production.
+        let mut cfg = live_config();
+        cfg.server.request_timeout_seconds = 0;
+        assert!(cfg.validate().is_err());
+
+        let mut cfg = live_config();
+        cfg.server.request_timeout_seconds = 301;
+        assert!(cfg.validate().is_err());
+
+        let mut cfg = live_config();
+        cfg.server.refresh_seconds = 0;
+        assert!(cfg.validate().is_err());
+
+        let mut cfg = live_config();
+        cfg.server.request_timeout_seconds = 15;
+        cfg.server.refresh_seconds = 30;
         assert!(cfg.validate().is_ok());
     }
 

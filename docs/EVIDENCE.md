@@ -422,6 +422,28 @@ it returns now describe the same window. `tests/http_api.rs` pins this without a
 `a_poll_inside_the_refresh_window_is_served_from_the_cache` and
 `replayed_windows_are_never_served_from_the_cache`.
 
+## Request deadline (2026-11-27, later build)
+
+`server.request_timeout_seconds` bounds one reconciliation behind a request and the `/readyz`
+probe. Live run with a TCP listener that accepts and never answers (a hung RPC), timeout `2s`:
+
+```
+reconcile -> 504 after 2328ms body={"error":"reconciliation did not finish within 2s"}
+readyz -> 503 after 2022ms body={"status":"unavailable","reason":"readiness did not finish within 2s"}
+```
+
+Before this the request had no deadline, and because the refresh cache holds its lock across the
+reconciliation, a stuck read also parked every poll queued behind it. Checks on this build:
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Format | `cargo fmt --all --check` | clean |
+| Lints | `cargo clippy --all-targets -- -D warnings` | clean |
+| Tests | `cargo test --all-targets` | 80 passed (54 unit, 5 capture CLI, 8 scan CLI, 13 HTTP), 0 failed |
+
+`a_chain_that_never_answers_ends_the_request_instead_of_pinning_it` runs a `SlowChain` (tip sleeps
+5 s) against an 80 ms deadline through the real router and asserts `504` with no `X-Recon-Cache`
+header, then `503` from `/readyz` with the deadline named in `reason`.
 ## Boundaries stated up front
 
 - Fixtures are synthetic; no recorded mainnet/testnet settlement data ships with the repo.

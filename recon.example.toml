@@ -48,6 +48,9 @@ bind = "127.0.0.1:8081"
 # variable unset only for loopback binds.
 api_token_env = "RECON_API_TOKEN"
 refresh_seconds = 30
+# Longest a request waits for one reconciliation (and for a readiness probe)
+# before answering 504 / 503 instead of hanging on a stuck RPC. 1..=300.
+request_timeout_seconds = 15
 
 [mock]
 fixture = "fixtures/chain_mock.json"

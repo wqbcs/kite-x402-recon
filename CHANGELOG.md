@@ -7,6 +7,11 @@ All notable changes to this project are documented here. Format follows
 
 ### Added
 
+- `server.request_timeout_seconds` (default 15, `1..=300`, `RECON_REQUEST_TIMEOUT_SECONDS`): every
+  request now waits at most that long for one reconciliation, then answers `504` and leaves the
+  window unpopulated. `/readyz` uses the same deadline and reports `503` for a probe it could not
+  finish. The refresh cache holds its lock across the reconciliation, so before this one stuck chain
+  read parked the request and every poll queued behind it with no deadline at all.
 - `serve` keeps one report for `server.refresh_seconds` and answers later polls from it. The
   endpoint has always advertised `Cache-Control: max-age=<refresh_seconds>`, but it reconciled on
   every request: a caller caching on that header served a report up to one window old while the

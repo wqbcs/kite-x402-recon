@@ -524,6 +524,7 @@ async fn serve(
         token: config.api_token(),
         mode: mode_label(config),
         refresh_seconds: config.server.refresh_seconds,
+        request_timeout: std::time::Duration::from_secs(config.server.request_timeout_seconds),
         cache: Default::default(),
     };
     let bind = bind.unwrap_or_else(|| config.server.bind.clone());

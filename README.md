@@ -191,6 +191,8 @@ Key fields:
 | `reconcile.window_minutes` | Records older than this are `unknown` **in live mode**; fixtures are frozen recordings and skip the check. |
 | `reconcile.search_lookback_blocks` | Block span for log search when a record has no tx hash. |
 | `ledger.kind` | `file` (JSONL), `hono_file` (`kite-x402-hono` receipt dump), or `http` (gateway endpoint returning an array or `{"records":[…]}`). |
+| `server.refresh_seconds` | The window one served report stays valid for; also what `Cache-Control` advertises. |
+| `server.request_timeout_seconds` | Deadline for one reconciliation behind a request (`504` after it) and for `/readyz` (`503`). Default 15, `1..=300`. |
 
 ## Ledger record format
 
@@ -253,7 +255,8 @@ UNKNOWN inv_second … :: transaction hash already claimed by record inv_first;
 
 Auth: when `RECON_API_TOKEN` (the variable named by `server.api_token_env`) is set, `/api/v1/reconcile`
 requires `Authorization: Bearer <token>`; `/healthz` and `/readyz` stay open. Unset token is allowed
-only for loopback binds and logs a warning. Errors are JSON: `{"error":"…"}`.
+only for loopback binds and logs a warning. Errors are JSON: `{"error":"…"}`; `504` means the
+reconciliation outlived `server.request_timeout_seconds` and nothing was cached.
 
 See [`docs/API.md`](docs/API.md) for the full contract.
 

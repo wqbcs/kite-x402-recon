@@ -93,6 +93,18 @@ The service keeps one report for the window it advertises, so a dashboard pollin
 `refresh_seconds` sees identical bodies and the RPC sees one read per window instead of one per poll.
 Concurrent polls wait for the single in-flight reconciliation rather than each starting their own.
 
+Failures:
+
+| Status | When | Body |
+| --- | --- | --- |
+| `401` | `server.api_token_env` is set and the bearer token is missing or wrong | `{"error":…}` |
+| `400` | `format` is neither `json` nor `csv`, or `at_block` is not a positive integer / is ahead of the tip | `{"error":…}` |
+| `502` | The chain or the ledger answered with an error | `{"error":…}` |
+| `504` | The reconciliation did not finish within `server.request_timeout_seconds` | `{"error":"reconciliation did not finish within 15s"}` |
+
+`504` is deliberate rather than `502`: the inputs are not known to be broken, the service just could
+not finish reading them. Nothing is cached on that path, so the next poll tries again.
+
 ```json
 {
   "mode": "mock",

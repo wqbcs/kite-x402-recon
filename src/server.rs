@@ -22,6 +22,8 @@ pub struct AppState {
     pub token: Option<String>,
     pub mode: String,
     pub refresh_seconds: u64,
+    /// Longest a request waits for one reconciliation before answering `504`.
+    pub request_timeout: std::time::Duration,
     /// The report `serve` keeps until `refresh_seconds` elapses.
     pub cache: ReportCache,
 }
@@ -83,8 +85,11 @@ async fn healthz(State(state): State<AppState>) -> Response {
 /// the failure a load balancer must not route around, so this endpoint touches
 /// the chain tip and reads the ledger, and answers 503 when either fails.
 async fn readyz(State(state): State<AppState>) -> Response {
-    match probe_readiness(&state).await {
-        Ok((tip, records)) => (
+    // A hung RPC must read as "not ready", not as a request that never returns:
+    // a probe with no deadline cannot fail the way a load balancer needs.
+    let readiness = tokio::time::timeout(state.request_timeout, probe_readiness(&state)).await;
+    match readiness {
+        Ok(Ok((tip, records))) => (
             StatusCode::OK,
             Json(json!({
                 "status": "ready",
@@ -95,9 +100,20 @@ async fn readyz(State(state): State<AppState>) -> Response {
             })),
         )
             .into_response(),
-        Err(reason) => (
+        Ok(Err(reason)) => (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({ "status": "unavailable", "reason": reason })),
+        )
+            .into_response(),
+        Err(_) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "status": "unavailable",
+                "reason": format!(
+                    "readiness did not finish within {}s",
+                    state.request_timeout.as_secs()
+                ),
+            })),
         )
             .into_response(),
     }
@@ -132,7 +148,15 @@ async fn reconcile(
     // A replayed window is a distinct question about a distinct block range,
     // so it is answered from the chain every time and never enters the cache.
     if let Some(raw) = params.get("at_block") {
-        return replayed_window(&state, format, raw).await;
+        return match tokio::time::timeout(
+            state.request_timeout,
+            replayed_window(&state, format, raw),
+        )
+        .await
+        {
+            Ok(response) => response,
+            Err(_) => timeout_response(&state),
+        };
     }
 
     let now = now_unix();
@@ -147,9 +171,18 @@ async fn reconcile(
         return report_response(&state, &hit.report, format, CacheState::Hit);
     }
 
-    let report = match state.reconciler.report(&*state.ledger, now).await {
-        Ok(report) => report,
-        Err(e) => return error_response(StatusCode::BAD_GATEWAY, &e.to_string()),
+    // The single-flight lock makes one slow chain fatal to every poll, so the
+    // reconciliation itself is bounded: a request that cannot get an answer in
+    // time says so and leaves the window unpopulated for the next attempt.
+    let report = match tokio::time::timeout(
+        state.request_timeout,
+        state.reconciler.report(&*state.ledger, now),
+    )
+    .await
+    {
+        Ok(Ok(report)) => report,
+        Ok(Err(e)) => return error_response(StatusCode::BAD_GATEWAY, &e.to_string()),
+        Err(_) => return timeout_response(&state),
     };
     *cached = Some(CachedReport {
         report: report.clone(),
@@ -275,6 +308,18 @@ enum OutputFormat {
 
 fn error_response(status: StatusCode, message: &str) -> Response {
     (status, Json(json!({ "error": message }))).into_response()
+}
+
+/// A reconciliation that outlived `server.request_timeout_seconds`.
+///
+/// `504` rather than `502`: the chain and the ledger are not known to be
+/// wrong, the service just could not finish reading them in time.
+fn timeout_response(state: &AppState) -> Response {
+    let seconds = state.request_timeout.as_secs();
+    error_response(
+        StatusCode::GATEWAY_TIMEOUT,
+        &format!("reconciliation did not finish within {seconds}s"),
+    )
 }
 
 /// Bearer-token check. Timing differences are acceptable here because the

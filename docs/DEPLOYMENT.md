@@ -38,6 +38,7 @@ search_lookback_blocks = 5000
 bind = "127.0.0.1:8081"
 api_token_env = "RECON_API_TOKEN"
 refresh_seconds = 30
+request_timeout_seconds = 15          # 504/503 instead of hanging on a stuck RPC
 ```
 
 Secrets:
