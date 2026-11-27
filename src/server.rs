@@ -12,7 +12,7 @@ use axum::{Json, Router};
 use serde_json::json;
 
 use crate::ledger::LedgerSource;
-use crate::model::now_unix;
+use crate::model::{now_unix, Report};
 use crate::reconcile::Reconciler;
 
 #[derive(Clone)]
@@ -22,6 +22,8 @@ pub struct AppState {
     pub token: Option<String>,
     pub mode: String,
     pub refresh_seconds: u64,
+    /// The report `serve` keeps until `refresh_seconds` elapses.
+    pub cache: ReportCache,
 }
 
 impl std::fmt::Debug for AppState {
@@ -35,6 +37,24 @@ impl std::fmt::Debug for AppState {
             .finish()
     }
 }
+
+#[derive(Debug, Clone)]
+struct CachedReport {
+    report: Report,
+    stored_at_unix: i64,
+}
+
+/// Holds one reconciled report until the advertised `refresh_seconds` elapses.
+///
+/// The handler used to reconcile on every request while advertising
+/// `Cache-Control: max-age=<refresh_seconds>`. Anyone caching on that header
+/// saw a report that was up to a refresh window old, while the service itself
+/// paid a chain tip read and a ledger parse for every poll — the two sides never
+/// agreed on what the window meant. Now the server honours the same window, so
+/// a dashboard polling faster than it gets byte-identical answers and the RPC
+/// sees one read per window instead of one per request.
+#[derive(Debug, Clone, Default)]
+pub struct ReportCache(Arc<tokio::sync::Mutex<Option<CachedReport>>>);
 
 pub fn router(state: AppState) -> Router {
     Router::new()
@@ -105,35 +125,94 @@ async fn reconcile(
     if let Some(response) = authorize(&state, &headers) {
         return response;
     }
-    // A shared reconciler serves the live tip; an anchored read clones it so
-    // one request can ask about a past window without affecting the others.
-    let mut reconciler = (*state.reconciler).clone();
+    let format = match parse_format(&params) {
+        Ok(format) => format,
+        Err(message) => return error_response(StatusCode::BAD_REQUEST, &message),
+    };
+    // A replayed window is a distinct question about a distinct block range,
+    // so it is answered from the chain every time and never enters the cache.
     if let Some(raw) = params.get("at_block") {
-        let block = match raw.parse::<u64>() {
-            Ok(block) if block > 0 => block,
-            _ => {
-                return error_response(
-                    StatusCode::BAD_REQUEST,
-                    "at_block must be a positive integer",
-                )
-            }
-        };
-        let tip = match reconciler.current_tip().await {
-            Ok(tip) => tip,
-            Err(e) => return error_response(StatusCode::BAD_GATEWAY, &e.to_string()),
-        };
-        if block > tip {
+        return replayed_window(&state, format, raw).await;
+    }
+
+    let now = now_unix();
+    // The refresh window is the same one `Cache-Control` advertises. Holding
+    // the lock across the reconciliation makes the window single-flight: a
+    // burst of polls waits for one report instead of queueing an RPC read each.
+    let mut cached = state.cache.0.lock().await;
+    if let Some(hit) = cached
+        .as_ref()
+        .filter(|hit| now.saturating_sub(hit.stored_at_unix) < state.refresh_seconds as i64)
+    {
+        return report_response(&state, &hit.report, format, CacheState::Hit);
+    }
+
+    let report = match state.reconciler.report(&*state.ledger, now).await {
+        Ok(report) => report,
+        Err(e) => return error_response(StatusCode::BAD_GATEWAY, &e.to_string()),
+    };
+    *cached = Some(CachedReport {
+        report: report.clone(),
+        stored_at_unix: now,
+    });
+    report_response(&state, &report, format, CacheState::Miss)
+}
+
+/// `?at_block=<n>`: reconcile a past window against the current chain.
+async fn replayed_window(state: &AppState, format: OutputFormat, raw: &str) -> Response {
+    let block = match raw.parse::<u64>() {
+        Ok(block) if block > 0 => block,
+        _ => {
             return error_response(
                 StatusCode::BAD_REQUEST,
-                &format!("at_block {block} is ahead of the chain tip {tip}"),
-            );
+                "at_block must be a positive integer",
+            )
         }
-        reconciler = reconciler.with_anchor_tip(block);
+    };
+    let mut reconciler = (*state.reconciler).clone();
+    let tip = match reconciler.current_tip().await {
+        Ok(tip) => tip,
+        Err(e) => return error_response(StatusCode::BAD_GATEWAY, &e.to_string()),
+    };
+    if block > tip {
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            &format!("at_block {block} is ahead of the chain tip {tip}"),
+        );
     }
-    let now = now_unix();
-    match reconciler.report(&*state.ledger, now).await {
-        Ok(report) => report_response(&state, &report, &params),
+    reconciler = reconciler.with_anchor_tip(block);
+    match reconciler.report(&*state.ledger, now_unix()).await {
+        Ok(report) => report_response(state, &report, format, CacheState::Bypass),
         Err(e) => error_response(StatusCode::BAD_GATEWAY, &e.to_string()),
+    }
+}
+
+fn parse_format(params: &HashMap<String, String>) -> std::result::Result<OutputFormat, String> {
+    match params.get("format").map(String::as_str) {
+        None | Some("json") => Ok(OutputFormat::Json),
+        Some("csv") => Ok(OutputFormat::Csv),
+        Some(other) => Err(format!("format must be json or csv, got {other:?}")),
+    }
+}
+
+/// How the response was produced, surfaced as `X-Recon-Cache`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CacheState {
+    /// Served from the report retained for this refresh window.
+    Hit,
+    /// Reconciled for this request and stored for the next one.
+    Miss,
+    /// A replayed window: never cached, always reconciled.
+    Bypass,
+}
+
+impl CacheState {
+    fn as_str(self) -> &'static str {
+        match self {
+            CacheState::Hit => "hit",
+            CacheState::Miss => "miss",
+            CacheState::Bypass => "bypass",
+        }
     }
 }
 
@@ -145,18 +224,9 @@ async fn reconcile(
 fn report_response(
     state: &AppState,
     report: &crate::model::Report,
-    params: &HashMap<String, String>,
+    format: OutputFormat,
+    cache_state: CacheState,
 ) -> Response {
-    let format = match params.get("format").map(String::as_str) {
-        None | Some("json") => OutputFormat::Json,
-        Some("csv") => OutputFormat::Csv,
-        Some(other) => {
-            return error_response(
-                StatusCode::BAD_REQUEST,
-                &format!("format must be json or csv, got {other:?}"),
-            )
-        }
-    };
     let (content_type, body, disposition) = match format {
         OutputFormat::Json => (
             "application/json",
@@ -187,8 +257,15 @@ fn report_response(
     let cache = header::HeaderValue::from_str(&format!("max-age={}", state.refresh_seconds))
         .unwrap_or_else(|_| header::HeaderValue::from_static("no-store"));
     response.headers_mut().insert(header::CACHE_CONTROL, cache);
+    response.headers_mut().insert(
+        CACHE_STATE_HEADER,
+        header::HeaderValue::from_static(cache_state.as_str()),
+    );
     response
 }
+
+/// Response header naming whether the report came from the refresh cache.
+pub const CACHE_STATE_HEADER: &str = "X-Recon-Cache";
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum OutputFormat {

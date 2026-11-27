@@ -249,7 +249,7 @@ UNKNOWN inv_second … :: transaction hash already claimed by record inv_first;
 | --- | --- |
 | `GET /healthz` | `{"status":"ok","mode":…,"chain_id":…,"auth":"bearer"\|"disabled"}` — liveness, never touches the chain |
 | `GET /readyz` | Readiness: reads a chain tip **and** parses the ledger; `{"status":"ready","tip":…,"records":…}`, or `503` naming the failing side |
-| `GET /api/v1/reconcile` | Full report JSON, same shape as `scan --format json`; `Cache-Control: max-age=<refresh_seconds>` |
+| `GET /api/v1/reconcile` | Full report JSON, same shape as `scan --format json`; `Cache-Control: max-age=<refresh_seconds>` plus `X-Recon-Cache: hit\|miss\|bypass`, because one report is retained for that window |
 
 Auth: when `RECON_API_TOKEN` (the variable named by `server.api_token_env`) is set, `/api/v1/reconcile`
 requires `Authorization: Bearer <token>`; `/healthz` and `/readyz` stay open. Unset token is allowed

@@ -524,6 +524,7 @@ async fn serve(
         token: config.api_token(),
         mode: mode_label(config),
         refresh_seconds: config.server.refresh_seconds,
+        cache: Default::default(),
     };
     let bind = bind.unwrap_or_else(|| config.server.bind.clone());
     let listener = match tokio::net::TcpListener::bind(&bind).await {

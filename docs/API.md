@@ -80,7 +80,18 @@ the download. `format=json` (or omitting it) keeps the default. Any other value 
 than a silent fallback to JSON.
 
 Success: `200 OK`, `Content-Type: application/json` (or `text/csv; charset=utf-8` for
-`format=csv`), `Cache-Control: max-age=<server.refresh_seconds>`.
+`format=csv`), `Cache-Control: max-age=<server.refresh_seconds>`, and `X-Recon-Cache` telling you
+how the body was produced:
+
+| `X-Recon-Cache` | Meaning |
+| --- | --- |
+| `miss` | Reconciled for this request from a chain tip read and a ledger parse; stored for the rest of the window. |
+| `hit` | The report retained for this `refresh_seconds` window; byte-identical to the `miss` that produced it. |
+| `bypass` | A replayed window (`at_block`); always reconciled, never cached. |
+
+The service keeps one report for the window it advertises, so a dashboard polling faster than
+`refresh_seconds` sees identical bodies and the RPC sees one read per window instead of one per poll.
+Concurrent polls wait for the single in-flight reconciliation rather than each starting their own.
 
 ```json
 {

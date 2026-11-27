@@ -52,6 +52,7 @@ fn state(token: Option<&str>) -> AppState {
         token: token.map(str::to_string),
         mode: "mock".to_string(),
         refresh_seconds: 30,
+        cache: Default::default(),
     }
 }
 
@@ -181,6 +182,63 @@ fn at_block_rejects_bad_or_future_values() {
         let body = response.1["error"].as_str().unwrap_or_default();
         assert!(body.contains(message), "{query}: {body}");
     }
+}
+
+#[test]
+fn a_poll_inside_the_refresh_window_is_served_from_the_cache() {
+    // `Cache-Control: max-age=<refresh_seconds>` promises callers that a report
+    // stays valid for one window. The service now honours the same window, so a
+    // dashboard polling every few seconds gets one report per window rather than
+    // one chain read per poll.
+    let app = router(state(Some("s3cret")));
+    let first = match blocking_request_raw(app.clone(), "/api/v1/reconcile", Some("s3cret")) {
+        Ok(response) => response,
+        Err(e) => panic!("{e}"),
+    };
+    assert_eq!(first.0, StatusCode::OK);
+    assert_eq!(cache_state(&first.1), "miss");
+
+    let second = match blocking_request_raw(app, "/api/v1/reconcile", Some("s3cret")) {
+        Ok(response) => response,
+        Err(e) => panic!("{e}"),
+    };
+    assert_eq!(second.0, StatusCode::OK);
+    assert_eq!(cache_state(&second.1), "hit");
+    assert_eq!(
+        second.2, first.2,
+        "a hit must replay the stored report, not a fresh one"
+    );
+}
+
+#[test]
+fn replayed_windows_are_never_served_from_the_cache() {
+    // Two different `at_block` values share the same URL path, so a cache keyed
+    // on the path alone would answer the second with the first window's verdict.
+    let app = router(state(Some("s3cret")));
+    let first = match blocking_request_raw(
+        app.clone(),
+        "/api/v1/reconcile?at_block=900",
+        Some("s3cret"),
+    ) {
+        Ok(response) => response,
+        Err(e) => panic!("{e}"),
+    };
+    assert_eq!(cache_state(&first.1), "bypass");
+    let second = match blocking_request_raw(app, "/api/v1/reconcile?at_block=950", Some("s3cret")) {
+        Ok(response) => response,
+        Err(e) => panic!("{e}"),
+    };
+    assert_eq!(cache_state(&second.1), "bypass");
+    let body = serde_json::from_slice::<Value>(&second.2).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(body["chain_tip"], 950);
+}
+
+fn cache_state(headers: &axum::http::HeaderMap) -> String {
+    headers
+        .get("x-recon-cache")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default()
+        .to_owned()
 }
 
 fn blocking_request(

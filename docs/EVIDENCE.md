@@ -394,6 +394,33 @@ See [`TESTING.md`](TESTING.md) for the coverage map and fixture contract. `tests
 `tests/http_api.rs` assert exact counts on purpose, so fixture drift fails CI instead of silently
 changing the demo numbers.
 
+## Refresh-window cache (2026-11-27)
+
+`serve` now keeps one report for `server.refresh_seconds`, the same window `Cache-Control` advertises,
+and names how each body was produced in `X-Recon-Cache`. Checks on this commit:
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Format | `cargo fmt --all --check` | clean |
+| Lints | `cargo clippy --all-targets -- -D warnings` | clean |
+| Tests | `cargo test --all-targets` | 78 passed (53 unit, 5 capture CLI, 8 scan CLI, 12 HTTP), 0 failed |
+
+Live mock run, three consecutive polls of the same endpoint plus two replayed windows:
+
+```
+.\target\debug\recon.exe --config recon.example.toml serve --bind 127.0.0.1:8099
+poll 1 -> status=200 cache=miss max-age=30 body_sha=CA3D042E8FDA09B6
+poll 2 -> status=200 cache=hit  max-age=30 body_sha=CA3D042E8FDA09B6
+poll 3 -> status=200 cache=hit  max-age=30 body_sha=CA3D042E8FDA09B6
+at_block=900 -> cache=bypass
+at_block=950 -> cache=bypass
+```
+
+The identical body hash is the claim that matters: the header the service advertises and the report
+it returns now describe the same window. `tests/http_api.rs` pins this without a server process in
+`a_poll_inside_the_refresh_window_is_served_from_the_cache` and
+`replayed_windows_are_never_served_from_the_cache`.
+
 ## Boundaries stated up front
 
 - Fixtures are synthetic; no recorded mainnet/testnet settlement data ships with the repo.

@@ -7,6 +7,14 @@ All notable changes to this project are documented here. Format follows
 
 ### Added
 
+- `serve` keeps one report for `server.refresh_seconds` and answers later polls from it. The
+  endpoint has always advertised `Cache-Control: max-age=<refresh_seconds>`, but it reconciled on
+  every request: a caller caching on that header served a report up to one window old while the
+  service itself paid a chain tip read and a ledger parse per poll. Both sides now mean the same
+  window — a burst of polls gets byte-identical bodies, one RPC read per window, and concurrent
+  polls wait on the single in-flight reconciliation. The response says how it was produced in
+  `X-Recon-Cache`: `hit`, `miss`, or `bypass` for a replayed `at_block` window, which is never
+  cached because two windows share one URL path.
 - `scan --fail-on <classes>`: choose which findings make the run exit non-zero — `differences`
   (`mismatched`/`failed`, the default), `orphans`, `unknown`, `pending`, `any` or `none`.
   Comma-separated classes union (`--fail-on differences,orphans`), so a CI gate can fail on money
