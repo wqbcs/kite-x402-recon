@@ -440,6 +440,7 @@ reconciliation, a stuck read also parked every poll queued behind it. Checks on 
 | Format | `cargo fmt --all --check` | clean |
 | Lints | `cargo clippy --all-targets -- -D warnings` | clean |
 | Tests | `cargo test --all-targets` | 80 passed (54 unit, 5 capture CLI, 8 scan CLI, 13 HTTP), 0 failed |
+| CI | GitHub Actions `CI` on push `aa56c85` | green (fmt+clippy+test on ubuntu-latest and windows-latest, rustdoc): <https://github.com/wqbcs/kite-x402-recon/actions/runs/45982311138> |
 
 `a_chain_that_never_answers_ends_the_request_instead_of_pinning_it` runs a `SlowChain` (tip sleeps
 5 s) against an 80 ms deadline through the real router and asserts `504` with no `X-Recon-Cache`
