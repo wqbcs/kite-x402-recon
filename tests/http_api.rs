@@ -468,6 +468,114 @@ fn csv_download_names_the_replayed_window() {
 }
 
 #[test]
+fn a_record_lookup_answers_one_transaction_without_a_window_pass() {
+    // The support-ticket question is about one hash, not a block range: this
+    // endpoint must return the same verdict the windowed report gives that
+    // record, with the tip it judged it at, and must never be cached because
+    // confirmations move with every block.
+    let app = router(state(Some("s3cret")));
+    let hash = "0x1111111111111111111111111111111111111111111111111111111111111111";
+    let path = format!("/api/v1/records/{hash}");
+    let (status, headers, bytes) = match blocking_request_raw(app, &path, Some("s3cret")) {
+        Ok(response) => response,
+        Err(e) => panic!("{e}"),
+    };
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        headers.get("cache-control").and_then(|v| v.to_str().ok()),
+        Some("no-store")
+    );
+    let body = serde_json::from_slice::<Value>(&bytes).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(body["chain_tip"], 1000);
+    assert_eq!(body["chain_id"], 2368);
+    assert_eq!(body["record"]["id"], "inv_ok");
+    assert_eq!(body["record"]["outcome"], "matched");
+    assert_eq!(
+        body["record"]["tx_hash"],
+        "0x1111111111111111111111111111111111111111111111111111111111111111"
+    );
+    assert!(body["record"]["confirmations"].as_u64().unwrap_or(0) > 0);
+}
+
+#[test]
+fn a_record_lookup_accepts_the_hash_in_either_case() {
+    // Ledger rows and block explorers disagree about hex case; a 404 for
+    // `0X...` would look like "this payment never happened".
+    let app = router(state(Some("s3cret")));
+    let hash = "0X1111111111111111111111111111111111111111111111111111111111111111";
+    let path = format!("/api/v1/records/{hash}");
+    let response = match blocking_request(app, &path, Some("s3cret")) {
+        Ok(response) => response,
+        Err(e) => panic!("{e}"),
+    };
+    assert_eq!(response.0, StatusCode::OK);
+    assert_eq!(response.1["record"]["id"], "inv_ok");
+}
+
+#[test]
+fn a_record_lookup_rejects_a_malformed_hash() {
+    for hash in ["0x123", "1111", "0xzzzz"] {
+        let app = router(state(Some("s3cret")));
+        let path = format!("/api/v1/records/{hash}");
+        let response = match blocking_request(app, &path, Some("s3cret")) {
+            Ok(response) => response,
+            Err(e) => panic!("{e}"),
+        };
+        assert_eq!(response.0, StatusCode::BAD_REQUEST, "{hash}");
+        let message = response.1["error"].as_str().unwrap_or_default();
+        assert!(message.contains("32-byte hash"), "{hash}: {message}");
+    }
+}
+
+#[test]
+fn a_record_lookup_separates_an_unknown_hash_from_a_broken_input() {
+    // A hash the ledger never mentions is an answer ("we did not record it"),
+    // not an upstream failure; 404 keeps that distinct from 502.
+    let app = router(state(Some("s3cret")));
+    let hash = "0x9999999999999999999999999999999999999999999999999999999999999999";
+    let path = format!("/api/v1/records/{hash}");
+    let response = match blocking_request(app, &path, Some("s3cret")) {
+        Ok(response) => response,
+        Err(e) => panic!("{e}"),
+    };
+    assert_eq!(response.0, StatusCode::NOT_FOUND);
+    let message = response.1["error"].as_str().unwrap_or_default();
+    assert!(message.contains(hash), "{message}");
+}
+
+#[test]
+fn a_record_lookup_needs_the_same_token_as_the_report() {
+    let app = router(state(Some("s3cret")));
+    let hash = "0x1111111111111111111111111111111111111111111111111111111111111111";
+    let path = format!("/api/v1/records/{hash}");
+    let response = match blocking_request(app, &path, None) {
+        Ok(response) => response,
+        Err(e) => panic!("{e}"),
+    };
+    assert_eq!(response.0, StatusCode::UNAUTHORIZED);
+}
+
+#[test]
+fn a_record_lookup_respects_the_request_deadline() {
+    // The same deadline that bounds a window pass bounds this lookup: a hung
+    // tip read must end in `504`, not a request parked forever.
+    let app = router(slow_state(
+        Some("s3cret"),
+        std::time::Duration::from_secs(5),
+        std::time::Duration::from_millis(80),
+    ));
+    let hash = "0x1111111111111111111111111111111111111111111111111111111111111111";
+    let path = format!("/api/v1/records/{hash}");
+    let response = match blocking_request(app, &path, Some("s3cret")) {
+        Ok(response) => response,
+        Err(e) => panic!("{e}"),
+    };
+    assert_eq!(response.0, StatusCode::GATEWAY_TIMEOUT);
+    let message = response.1["error"].as_str().unwrap_or_default();
+    assert!(message.contains("did not finish"), "{message}");
+}
+
+#[test]
 fn unknown_format_is_rejected_instead_of_silently_serving_json() {
     let app = router(state(Some("s3cret")));
     let response = match blocking_request(app, "/api/v1/reconcile?format=xml", Some("s3cret")) {

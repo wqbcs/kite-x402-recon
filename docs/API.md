@@ -168,15 +168,59 @@ Field notes:
 - `summary.duplicates` counts records rejected because their `tx_hash` was already claimed by an
   earlier record; those records are counted inside `summary.unknown`.
 
+## `GET /api/v1/records/{transaction}`
+
+Answers the support-ticket question — "what happened to this transaction?" — for exactly one
+settlement, using the same reconciler and the same receiver/window configuration as a report.
+
+The path segment must be `0x` plus 64 hex digits (either case); anything else is a `400`. The
+ledger is searched for a record whose `tx_hash` matches, ignoring case; a hash the ledger never
+mentions is a `404` because that is an answer, not an upstream failure. The record is then judged
+against the current tip, so the response carries a verdict, a reason, and the block/confirmation
+evidence that produced it.
+
+```json
+{
+  "mode": "mock",
+  "chain_id": 2368,
+  "receiver": "0x2222222222222222222222222222222222222222",
+  "ledger": "memory(7 records)",
+  "generated_at": "2026-11-28T02:50:00Z",
+  "chain_tip": 1000,
+  "record": {
+    "id": "inv_ok",
+    "pay_to": "0x2222222222222222222222222222222222222222",
+    "payer": "0x4444444444444444444444444444444444444444",
+    "amount_atomic": "10000",
+    "outcome": "matched",
+    "reason": "transfer of 10000 atomic units confirmed at block 990",
+    "tx_hash": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "block_number": 990,
+    "confirmations": 11
+  }
+}
+```
+
+Differences from the window endpoint:
+
+- `Cache-Control: no-store` — confirmations move with every block and the body names the tip it
+  was judged at, so a cached copy would silently age.
+- No `X-Recon-Cache` header and no `format` parameter: this is one record, not an export.
+- The duplicate-claim rule is a cross-record rule, so a single-record answer never reports
+  `unknown` because another record also claimed the hash. The windowed report stays authoritative
+  for that verdict; the reason text for `unknown` says which case applied.
+
 ## Errors
 
 All errors are JSON: `{"error": "<message>"}`.
 
 | Status | When |
 | --- | --- |
-| 400 | Invalid `at_block` (zero, non-numeric, ahead of the tip) or unsupported `format`. |
+| 400 | Invalid `at_block` (zero, non-numeric, ahead of the tip), unsupported `format`, or a `records` path segment that is not a 32-byte hash. |
 | 401 | Missing/invalid bearer token. |
+| 404 | `/api/v1/records/{transaction}`: the ledger was readable but carries no record with that hash. |
 | 502 | Ledger read or chain RPC failed; message names the failing step. |
+| 504 | The request outlived `server.request_timeout_seconds` (both endpoints). |
 | 500 | Serialisation failure (should not happen; reported rather than panicking). |
 
 There is no request body. Retries are the client's business; the endpoint is idempotent per `now`.
@@ -195,4 +239,6 @@ curl -s -H "Authorization: Bearer dev-token" localhost:8081/api/v1/reconcile \
 
 `tests/http_api.rs` exercises the router directly (no port binding): health, 401 without token,
 200 with token, the exact summary of the bundled fixtures, `at_block` replay and its `400` cases,
-and the CSV representation (content type, header row, row count and download filename).
+the CSV representation (content type, header row, row count and download filename), and the
+per-record lookup (`200` for a ledger hash in either case, `400` for a malformed one, `404` for an
+unknown one, `401` without a token, `504` under the request deadline, plus `Cache-Control: no-store`).

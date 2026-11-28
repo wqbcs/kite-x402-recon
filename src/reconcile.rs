@@ -97,6 +97,12 @@ impl Reconciler {
         self.chain.chain_id()
     }
 
+    /// The receiver every record is judged against.
+    #[must_use]
+    pub fn receiver(&self) -> &str {
+        &self.receiver
+    }
+
     /// The chain tip right now, regardless of any anchor.
     pub async fn current_tip(&self) -> Result<u64> {
         self.chain.tip().await
@@ -202,6 +208,28 @@ impl Reconciler {
         now: i64,
     ) -> Result<Report> {
         self.clone().effective().await.pass(ledger, now).await
+    }
+
+    /// Evaluate exactly one ledger record against the chain, at the current tip
+    /// (or the configured anchor).
+    ///
+    /// `/api/v1/reconcile` answers a whole-window question; this answers the
+    /// narrower one an operator asks holding a support ticket — "what happened
+    /// to this transaction?" — without paying for a window pass that also scans
+    /// for orphans and re-evaluates every other record. The duplicate-claim
+    /// rule is a cross-record rule, so a single record never reports `unknown`
+    /// for a hash another record also claims: a windowed report stays
+    /// authoritative for that verdict.
+    pub async fn record(
+        &self,
+        record: &crate::model::LedgerRecord,
+        now: i64,
+    ) -> Result<(u64, ReconciledRecord)> {
+        let tip = match self.anchor_tip {
+            Some(block) => block,
+            None => self.chain.tip().await?,
+        };
+        Ok((tip, self.evaluate(record, tip, now).await))
     }
 
     async fn pass(&self, ledger: &(dyn LedgerSource + Send + Sync), now: i64) -> Result<Report> {

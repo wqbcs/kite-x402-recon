@@ -7,6 +7,11 @@ All notable changes to this project are documented here. Format follows
 
 ### Added
 
+- `GET /api/v1/records/{transaction}`: judge one settlement on its own instead of a whole window.
+  A support ticket names a hash, and re-running the window pass to look that one up also scans for
+  orphans and re-evaluates every other record. The answer is the ledger record plus the same
+  outcome/reason/evidence the report would give it, at the tip it was judged at; `400` for a
+  malformed hash, `404` when the ledger never mentions it, `no-store` because confirmations age.
 - `server.request_timeout_seconds` (default 15, `1..=300`, `RECON_REQUEST_TIMEOUT_SECONDS`): every
   request now waits at most that long for one reconciliation, then answers `504` and leaves the
   window unpopulated. `/readyz` uses the same deadline and reports `503` for a probe it could not

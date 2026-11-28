@@ -252,8 +252,9 @@ UNKNOWN inv_second … :: transaction hash already claimed by record inv_first;
 | `GET /healthz` | `{"status":"ok","mode":…,"chain_id":…,"auth":"bearer"\|"disabled"}` — liveness, never touches the chain |
 | `GET /readyz` | Readiness: reads a chain tip **and** parses the ledger; `{"status":"ready","tip":…,"records":…}`, or `503` naming the failing side |
 | `GET /api/v1/reconcile` | Full report JSON, same shape as `scan --format json`; `Cache-Control: max-age=<refresh_seconds>` plus `X-Recon-Cache: hit\|miss\|bypass`, because one report is retained for that window |
+| `GET /api/v1/records/{transaction}` | One settlement judged on its own: the ledger record plus its outcome, reason, block and confirmations, at the tip it used. `400` for a malformed hash, `404` when the ledger never mentions it, `no-store` because confirmations age |
 
-Auth: when `RECON_API_TOKEN` (the variable named by `server.api_token_env`) is set, `/api/v1/reconcile`
+Auth: when `RECON_API_TOKEN` (the variable named by `server.api_token_env`) is set, `/api/v1/*`
 requires `Authorization: Bearer <token>`; `/healthz` and `/readyz` stay open. Unset token is allowed
 only for loopback binds and logs a warning. Errors are JSON: `{"error":"…"}`; `504` means the
 reconciliation outlived `server.request_timeout_seconds` and nothing was cached.

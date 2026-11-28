@@ -12,7 +12,7 @@ use axum::{Json, Router};
 use serde_json::json;
 
 use crate::ledger::LedgerSource;
-use crate::model::{now_unix, Report};
+use crate::model::{format_unix, now_unix, Report};
 use crate::reconcile::Reconciler;
 
 #[derive(Clone)]
@@ -63,6 +63,7 @@ pub fn router(state: AppState) -> Router {
         .route("/healthz", get(healthz))
         .route("/readyz", get(readyz))
         .route("/api/v1/reconcile", get(reconcile))
+        .route("/api/v1/records/{transaction}", get(record_lookup))
         .with_state(state)
 }
 
@@ -189,6 +190,99 @@ async fn reconcile(
         stored_at_unix: now,
     });
     report_response(&state, &report, format, CacheState::Miss)
+}
+
+/// `GET /api/v1/records/{transaction}`: answer for one settlement instead of a
+/// window. A support ticket names a transaction hash, not a block range, and
+/// re-running the whole window to look that one up costs a full chain scan.
+async fn record_lookup(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Path(transaction): axum::extract::Path<String>,
+) -> Response {
+    if let Some(response) = authorize(&state, &headers) {
+        return response;
+    }
+    let Some(tx) = lookup_hash(&transaction) else {
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            "transaction must be a 0x-prefixed 32-byte hash",
+        );
+    };
+    match tokio::time::timeout(state.request_timeout, evaluate_record(&state, &tx)).await {
+        Ok(Ok((now, tip, finding))) => {
+            let body = json!({
+                "mode": state.mode,
+                "chain_id": state.reconciler.chain_id(),
+                "receiver": state.reconciler.receiver(),
+                "ledger": state.ledger.describe(),
+                "generated_at": format_unix(now),
+                "chain_tip": tip,
+                "record": finding,
+            });
+            let mut response = (StatusCode::OK, Json(body)).into_response();
+            // Confirmation counts move with every block and the answer names the
+            // tip it was judged at, so a cached copy would silently age.
+            response.headers_mut().insert(
+                header::CACHE_CONTROL,
+                header::HeaderValue::from_static("no-store"),
+            );
+            response
+        }
+        Ok(Err(LookupFailure::NotFound(tx))) => error_response(
+            StatusCode::NOT_FOUND,
+            &format!("no ledger record carries transaction {tx}"),
+        ),
+        Ok(Err(LookupFailure::Inputs(message))) => {
+            error_response(StatusCode::BAD_GATEWAY, &message)
+        }
+        Err(_) => timeout_response(&state),
+    }
+}
+
+enum LookupFailure {
+    /// The ledger was readable and simply did not mention this transaction.
+    NotFound(String),
+    /// The ledger or the chain could not be read.
+    Inputs(String),
+}
+
+async fn evaluate_record(
+    state: &AppState,
+    tx: &str,
+) -> std::result::Result<(i64, u64, crate::model::ReconciledRecord), LookupFailure> {
+    let records = state
+        .ledger
+        .fetch()
+        .await
+        .map_err(|e| LookupFailure::Inputs(format!("ledger: {e}")))?;
+    let record = records
+        .iter()
+        .find(|record| {
+            record
+                .tx_hash
+                .as_deref()
+                .is_some_and(|hash| hash.trim().eq_ignore_ascii_case(tx))
+        })
+        .cloned()
+        .ok_or_else(|| LookupFailure::NotFound(tx.to_owned()))?;
+    let now = now_unix();
+    let (tip, finding) = state
+        .reconciler
+        .record(&record, now)
+        .await
+        .map_err(|e| LookupFailure::Inputs(e.to_string()))?;
+    Ok((now, tip, finding))
+}
+
+/// Canonicalise a path segment: `0x` plus 64 hex digits, either case.
+fn lookup_hash(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    let hex = trimmed
+        .strip_prefix("0x")
+        .or_else(|| trimmed.strip_prefix("0X"))?;
+    (hex.len() == 64 && hex.bytes().all(|b| b.is_ascii_hexdigit()))
+        .then(|| format!("0x{}", hex.to_ascii_lowercase()))
 }
 
 /// `?at_block=<n>`: reconcile a past window against the current chain.
