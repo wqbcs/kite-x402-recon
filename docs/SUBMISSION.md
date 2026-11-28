@@ -93,16 +93,17 @@ Evidence supplied for registration review:
 | 2026-11-27 | `276445a` | docs: CI evidence for the refresh-window cache |
 | 2026-11-27 | `aa56c85` | `server.request_timeout_seconds`: `504` / `503` instead of a request pinned by a stuck RPC |
 | 2026-11-28 | `17c4605` | `GET /api/v1/records/{transaction}`: one settlement judged on its own, `no-store` |
+| 2026-11-28 | `1aaf13a` | `recon inspect <transaction>`: same one-record answer from the CLI, shared `lookup` module, `RecordAnswer` shape |
 
 ## 4. Test, build and lint results
 
 | Check | Command | Result |
 | --- | --- | --- |
-| Tests | `cargo test --all-targets` | 86 passed (54 unit, 5 capture CLI, 8 scan CLI, 19 HTTP), 0 failed |
+| Tests | `cargo test --all-targets` | 97 passed (57 unit, 5 capture CLI, 8 scan CLI, 8 inspect CLI, 19 HTTP), 0 failed |
 | Lints | `cargo clippy --all-targets -- -D warnings` | clean |
 | Format | `cargo fmt --all --check` | clean |
 | Docs | `cargo doc --no-deps` | no warnings |
-| CI | GitHub Actions `CI` (ubuntu-latest + windows-latest + rustdoc) | green on `17c4605`: <https://github.com/wqbcs/kite-x402-recon/actions/runs/46099489682> |
+| CI | GitHub Actions `CI` (ubuntu-latest + windows-latest + rustdoc) | green on `1aaf13a`: <https://github.com/wqbcs/kite-x402-recon/actions/runs/46155497340> |
 
 ## 5. Runnable demonstration
 

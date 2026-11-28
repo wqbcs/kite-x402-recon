@@ -475,6 +475,46 @@ age silently. Checks on this build:
 `a_record_lookup_needs_the_same_token_as_the_report`, and
 `a_record_lookup_respects_the_request_deadline` (`504` through `SlowChain`).
 
+## Single-record CLI (2026-11-28)
+
+`recon inspect <transaction>` answers the same support-ticket question as the HTTP endpoint, from
+a shell, and shares `src/lookup.rs` with it so both surfaces agree on what a valid hash is. Live
+mock runs against `fixtures/ledger.jsonl`:
+
+```
+recon --config recon.example.toml inspect 0x1111…1111
+  mode=mock chain_id=2368 tip=1000 ledger=file:fixtures/ledger.jsonl receiver=0x2222… generated_at=…
+  MATCHED    inv_ok    amount=10000 tx=0x1111… block=990 confirmations=11 :: transfer of 10000 atomic units confirmed at block 990
+  note: mock mode reads fixtures/chain_mock.json; nothing here came from a chain
+  exit=0
+
+recon … inspect 0x4444…4444 --format markdown
+  | FAILED | inv_reverted | 20000 | 0x4444… | 998 | - | transaction reverted on chain |
+  exit=1
+
+recon … inspect 0x9999…9999
+  ERROR recon: no ledger record carries transaction 0x9999…
+  exit=66
+```
+
+The exit code follows the verdict, not a finding-class gate: `0` matched, `1` mismatched/failed,
+`2` pending/unknown, `66` no such record, `78` a hash that cannot address one. Checks on this
+build:
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Format | `cargo fmt --all --check` | clean |
+| Lints | `cargo clippy --all-targets -- -D warnings` | clean |
+| Tests | `cargo test --all-targets` | 97 passed (57 unit, 5 capture CLI, 8 scan CLI, 8 inspect CLI, 19 HTTP), 0 failed |
+| CI | GitHub Actions `CI` on push `1aaf13a` | green (fmt+clippy+test on ubuntu-latest and windows-latest, rustdoc): <https://github.com/wqbcs/kite-x402-recon/actions/runs/46155497340> |
+
+`tests/cli_inspect.rs` pins the contract black-box: matched record and API-shaped JSON,
+upper-case `0X` hash normalised back to lower case, text output naming tip and ledger, `failed`
+exiting `1` while `pending` exits `2`, `0x123`/`1111`/`0xzzzz` exiting `78`, an unknown hash
+exiting `66` with nothing on stdout, `--at-block 995` reporting `chain_tip=995` and six
+confirmations, a future anchor refused, and `--format csv` refused. The 19 HTTP tests are
+unchanged and still pass, which pins the response shape through the shared `RecordAnswer` struct.
+
 ## Boundaries stated up front
 
 - Fixtures are synthetic; no recorded mainnet/testnet settlement data ships with the repo.
