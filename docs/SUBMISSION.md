@@ -92,16 +92,17 @@ Evidence supplied for registration review:
 | 2026-11-27 | `77a22cd` | `serve` keeps one report per `refresh_seconds`, `X-Recon-Cache: hit\|miss\|bypass` |
 | 2026-11-27 | `276445a` | docs: CI evidence for the refresh-window cache |
 | 2026-11-27 | `aa56c85` | `server.request_timeout_seconds`: `504` / `503` instead of a request pinned by a stuck RPC |
+| 2026-11-28 | `17c4605` | `GET /api/v1/records/{transaction}`: one settlement judged on its own, `no-store` |
 
 ## 4. Test, build and lint results
 
 | Check | Command | Result |
 | --- | --- | --- |
-| Tests | `cargo test --all-targets` | 80 passed (54 unit, 5 capture CLI, 8 scan CLI, 13 HTTP), 0 failed |
+| Tests | `cargo test --all-targets` | 86 passed (54 unit, 5 capture CLI, 8 scan CLI, 19 HTTP), 0 failed |
 | Lints | `cargo clippy --all-targets -- -D warnings` | clean |
 | Format | `cargo fmt --all --check` | clean |
 | Docs | `cargo doc --no-deps` | no warnings |
-| CI | GitHub Actions `CI` (ubuntu-latest + windows-latest + rustdoc) | green on `aa56c85`: <https://github.com/wqbcs/kite-x402-recon/actions/runs/45982311138> |
+| CI | GitHub Actions `CI` (ubuntu-latest + windows-latest + rustdoc) | green on `17c4605`: <https://github.com/wqbcs/kite-x402-recon/actions/runs/46099489682> |
 
 ## 5. Runnable demonstration
 

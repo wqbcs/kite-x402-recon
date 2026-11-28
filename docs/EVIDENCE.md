@@ -445,6 +445,36 @@ reconciliation, a stuck read also parked every poll queued behind it. Checks on 
 `a_chain_that_never_answers_ends_the_request_instead_of_pinning_it` runs a `SlowChain` (tip sleeps
 5 s) against an 80 ms deadline through the real router and asserts `504` with no `X-Recon-Cache`
 header, then `503` from `/readyz` with the deadline named in `reason`.
+## Single-record lookup (2026-11-28)
+
+`GET /api/v1/records/{transaction}` answers one settlement instead of a window: the ledger record
+plus the same outcome, reason, block and confirmations the report would give it, judged at the tip
+the response names. Live mock run:
+
+```
+GET /api/v1/records/0x1111… -> 200 cache=no-store
+  record.id=inv_ok outcome=matched block=990 confirmations=11 tip=1000
+GET /api/v1/records/0x123 -> 400 {"error":"transaction must be a 0x-prefixed 32-byte hash"}
+GET /api/v1/records/0x9999… -> 404 {"error":"no ledger record carries transaction 0x9999…"}
+```
+
+`no-store` is deliberate: the body names a tip and a confirmation count, so a cached copy would
+age silently. Checks on this build:
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Format | `cargo fmt --all --check` | clean |
+| Lints | `cargo clippy --all-targets -- -D warnings` | clean |
+| Tests | `cargo test --all-targets` | 86 passed (54 unit, 5 capture CLI, 8 scan CLI, 19 HTTP), 0 failed |
+| CI | GitHub Actions `CI` on push `17c4605` | green (fmt+clippy+test on ubuntu-latest and windows-latest, rustdoc): <https://github.com/wqbcs/kite-x402-recon/actions/runs/46099489682> |
+
+`tests/http_api.rs` pins the contract without a server process:
+`a_record_lookup_answers_one_transaction_without_a_window_pass` (verdict, tip, `no-store`),
+`a_record_lookup_accepts_the_hash_in_either_case`, `a_record_lookup_rejects_a_malformed_hash`,
+`a_record_lookup_separates_an_unknown_hash_from_a_broken_input` (`404`, not `502`),
+`a_record_lookup_needs_the_same_token_as_the_report`, and
+`a_record_lookup_respects_the_request_deadline` (`504` through `SlowChain`).
+
 ## Boundaries stated up front
 
 - Fixtures are synthetic; no recorded mainnet/testnet settlement data ships with the repo.
