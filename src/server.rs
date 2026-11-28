@@ -12,7 +12,8 @@ use axum::{Json, Router};
 use serde_json::json;
 
 use crate::ledger::LedgerSource;
-use crate::model::{format_unix, now_unix, Report};
+use crate::lookup::{find_record, normalize_transaction};
+use crate::model::{format_unix, now_unix, RecordAnswer, Report};
 use crate::reconcile::Reconciler;
 
 #[derive(Clone)]
@@ -203,7 +204,7 @@ async fn record_lookup(
     if let Some(response) = authorize(&state, &headers) {
         return response;
     }
-    let Some(tx) = lookup_hash(&transaction) else {
+    let Some(tx) = normalize_transaction(&transaction) else {
         return error_response(
             StatusCode::BAD_REQUEST,
             "transaction must be a 0x-prefixed 32-byte hash",
@@ -211,16 +212,16 @@ async fn record_lookup(
     };
     match tokio::time::timeout(state.request_timeout, evaluate_record(&state, &tx)).await {
         Ok(Ok((now, tip, finding))) => {
-            let body = json!({
-                "mode": state.mode,
-                "chain_id": state.reconciler.chain_id(),
-                "receiver": state.reconciler.receiver(),
-                "ledger": state.ledger.describe(),
-                "generated_at": format_unix(now),
-                "chain_tip": tip,
-                "record": finding,
-            });
-            let mut response = (StatusCode::OK, Json(body)).into_response();
+            let answer = RecordAnswer {
+                mode: state.mode.clone(),
+                chain_id: state.reconciler.chain_id(),
+                receiver: state.reconciler.receiver().to_owned(),
+                ledger: state.ledger.describe(),
+                generated_at: format_unix(now),
+                chain_tip: tip,
+                record: finding,
+            };
+            let mut response = (StatusCode::OK, Json(answer)).into_response();
             // Confirmation counts move with every block and the answer names the
             // tip it was judged at, so a cached copy would silently age.
             response.headers_mut().insert(
@@ -256,14 +257,7 @@ async fn evaluate_record(
         .fetch()
         .await
         .map_err(|e| LookupFailure::Inputs(format!("ledger: {e}")))?;
-    let record = records
-        .iter()
-        .find(|record| {
-            record
-                .tx_hash
-                .as_deref()
-                .is_some_and(|hash| hash.trim().eq_ignore_ascii_case(tx))
-        })
+    let record = find_record(&records, tx)
         .cloned()
         .ok_or_else(|| LookupFailure::NotFound(tx.to_owned()))?;
     let now = now_unix();
@@ -273,16 +267,6 @@ async fn evaluate_record(
         .await
         .map_err(|e| LookupFailure::Inputs(e.to_string()))?;
     Ok((now, tip, finding))
-}
-
-/// Canonicalise a path segment: `0x` plus 64 hex digits, either case.
-fn lookup_hash(raw: &str) -> Option<String> {
-    let trimmed = raw.trim();
-    let hex = trimmed
-        .strip_prefix("0x")
-        .or_else(|| trimmed.strip_prefix("0X"))?;
-    (hex.len() == 64 && hex.bytes().all(|b| b.is_ascii_hexdigit()))
-        .then(|| format!("0x{}", hex.to_ascii_lowercase()))
 }
 
 /// `?at_block=<n>`: reconcile a past window against the current chain.

@@ -94,6 +94,25 @@ pub struct ReconciledRecord {
     pub recovered_by: Option<String>,
 }
 
+/// The answer to "what happened to this one transaction?".
+///
+/// Shared by `recon inspect` and `GET /api/v1/records/{transaction}` so both
+/// surfaces describe the same verdict with the same fields: the tip the record
+/// was judged at, the receiver it was judged against, which ledger answered,
+/// and the record itself.
+#[derive(Debug, Clone, Serialize)]
+pub struct RecordAnswer {
+    /// `live` or `mock`; a fixture answer must never read as on-chain evidence.
+    pub mode: String,
+    pub chain_id: u64,
+    pub receiver: String,
+    /// Ledger source description, e.g. `file:fixtures/ledger.jsonl`.
+    pub ledger: String,
+    pub generated_at: String,
+    pub chain_tip: u64,
+    pub record: ReconciledRecord,
+}
+
 /// An on-chain transfer to the receiver with no matching ledger record.
 #[derive(Debug, Clone, Serialize)]
 pub struct OrphanTransfer {

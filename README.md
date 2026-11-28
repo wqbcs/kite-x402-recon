@@ -32,6 +32,7 @@ re-submitting settlements, no writing to a chain.
 | --- | --- |
 | `recon probe` | Verify RPC reachability, chain id, tip, measured block time and token metadata (symbol/decimals). |
 | `recon scan` | Reconcile one ledger batch against the chain window; render `text`, `json`, `markdown` or `csv`. |
+| `recon inspect` | Judge one settlement by its transaction hash, without a window pass (`text`, `json`, `markdown`). |
 | `recon capture` | Rebuild a ledger file from the token transfers a block range contains (recovery path). |
 | `recon serve` | Expose the same report over a small read-only HTTP API (`/healthz`, `/api/v1/reconcile`). |
 
@@ -267,7 +268,8 @@ See [`docs/API.md`](docs/API.md) for the full contract.
 | --- | --- |
 | 0 | No selected finding class (pending is allowed unless asked for). |
 | 1 | A selected finding class is present: `differences` (`mismatched`/`failed`, the default), `orphans` or `unknown`. |
-| 2 | `pending` is selected (`--strict` or `--fail-on pending`) and something is still pending. |
+| 2 | `pending` is selected (`--strict` or `--fail-on pending`) and something is still pending; for `inspect`, the record is `pending` or `unknown`. |
+| 66 | `inspect`: no ledger record carries that transaction. |
 | 69/70/71/73/74/78 | Chain error / internal / bind / write / stdout / config (sysexits-style). |
 
 `scan --fail-on <classes>` chooses which findings turn red, so a CI job can gate on money

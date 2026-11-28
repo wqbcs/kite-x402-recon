@@ -209,6 +209,9 @@ Differences from the window endpoint:
 - The duplicate-claim rule is a cross-record rule, so a single-record answer never reports
   `unknown` because another record also claimed the hash. The windowed report stays authoritative
   for that verdict; the reason text for `unknown` says which case applied.
+- `recon inspect <transaction> --format json` returns this same document (same field names, same
+  verdict), so a script can move between the CLI and the API without remapping. The CLI reuses the
+  same hash normalisation and ledger lookup in `src/lookup.rs` rather than reimplementing them.
 
 ## Errors
 

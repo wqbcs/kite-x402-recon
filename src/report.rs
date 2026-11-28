@@ -4,7 +4,7 @@
 use std::fmt::Write as _;
 
 use crate::error::Result;
-use crate::model::{Outcome, Report};
+use crate::model::{Outcome, RecordAnswer, Report};
 
 /// Pretty JSON, the canonical machine-readable form.
 pub fn to_json(report: &Report) -> Result<String> {
@@ -121,6 +121,96 @@ fn label(outcome: Outcome) -> &'static str {
         Outcome::Failed => "FAILED",
         Outcome::Unknown => "UNKNOWN",
     }
+}
+
+/// One-record answer as pretty JSON — the same shape `GET
+/// /api/v1/records/{transaction}` returns.
+pub fn answer_to_json(answer: &RecordAnswer) -> Result<String> {
+    Ok(serde_json::to_string_pretty(answer)?)
+}
+
+/// One-record answer as a header line plus one verdict line.
+///
+/// The header repeats the context a verdict is meaningless without: the tip it
+/// was judged at, the receiver it was judged against and which ledger answered.
+pub fn answer_to_text(answer: &RecordAnswer) -> String {
+    let record = &answer.record;
+    let mut out = String::new();
+    let _ = writeln!(
+        out,
+        "mode={} chain_id={} tip={} ledger={} receiver={} generated_at={}",
+        answer.mode,
+        answer.chain_id,
+        answer.chain_tip,
+        answer.ledger,
+        answer.receiver,
+        answer.generated_at
+    );
+    let _ = writeln!(
+        out,
+        "{:<10} {:<9} amount={} tx={} block={} confirmations={} :: {}",
+        label(record.outcome),
+        record.id,
+        record.amount_atomic,
+        record.tx_hash.as_deref().unwrap_or("-"),
+        record
+            .block_number
+            .map(|block| block.to_string())
+            .unwrap_or_else(|| "-".to_string()),
+        record
+            .confirmations
+            .map(|confirmations| confirmations.to_string())
+            .unwrap_or_else(|| "-".to_string()),
+        record.reason
+    );
+    if answer.mode == "mock" {
+        let _ = writeln!(
+            out,
+            "note: mock mode reads fixtures/chain_mock.json; nothing here came from a chain"
+        );
+    }
+    out
+}
+
+/// One-record answer as a Markdown quote plus a one-row table, for pasting into
+/// a ticket or a submission record.
+pub fn answer_to_markdown(answer: &RecordAnswer) -> String {
+    let record = &answer.record;
+    let mut out = String::new();
+    let _ = writeln!(
+        out,
+        "> `{}` chain {} · tip {} · ledger {} · receiver {} · {}",
+        answer.mode,
+        answer.chain_id,
+        answer.chain_tip,
+        answer.ledger,
+        answer.receiver,
+        answer.generated_at
+    );
+    let _ = writeln!(out);
+    let _ = writeln!(
+        out,
+        "| outcome | id | amount | tx | block | confirmations | reason |"
+    );
+    let _ = writeln!(out, "| --- | --- | --- | --- | --- | --- | --- |");
+    let _ = writeln!(
+        out,
+        "| {} | {} | {} | {} | {} | {} | {} |",
+        label(record.outcome),
+        record.id,
+        record.amount_atomic,
+        record.tx_hash.as_deref().unwrap_or("-"),
+        record
+            .block_number
+            .map(|block| block.to_string())
+            .unwrap_or_else(|| "-".to_string()),
+        record
+            .confirmations
+            .map(|confirmations| confirmations.to_string())
+            .unwrap_or_else(|| "-".to_string()),
+        record.reason.replace('|', "\\|")
+    );
+    out
 }
 
 /// The report as RFC 4180 CSV: one row per ledger record and one row per

@@ -10,7 +10,8 @@ use kite_x402_recon::config::Config;
 use kite_x402_recon::model::{format_unix, now_unix};
 use kite_x402_recon::server::{router, AppState};
 use kite_x402_recon::{
-    capture, chain_from_config, ledger_from_config, mode_label, reconciler_from_config, report,
+    capture, chain_from_config, ledger_from_config, lookup, mode_label, model,
+    reconciler_from_config, report,
 };
 use tracing_subscriber::EnvFilter;
 
@@ -79,6 +80,16 @@ enum Command {
         /// Destination JSONL file (required, so log output stays unattended).
         #[arg(long)]
         out: PathBuf,
+    },
+    /// Judge one settlement by its transaction hash, without a window pass.
+    Inspect {
+        /// 0x-prefixed 32-byte transaction hash, either case.
+        transaction: String,
+        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+        format: OutputFormat,
+        /// Judge as of this block instead of the current tip.
+        #[arg(long)]
+        at_block: Option<u64>,
     },
     /// Serve the read-only HTTP API.
     Serve {
@@ -214,6 +225,11 @@ async fn run(cli: Cli) -> ExitCode {
             .await
         }
         Command::Serve { bind } => serve(&config, chain, bind).await,
+        Command::Inspect {
+            transaction,
+            format,
+            at_block,
+        } => inspect(&config, chain, &transaction, format, at_block).await,
     }
 }
 
@@ -504,6 +520,127 @@ async fn capture_ledger(
         "ledger captured"
     );
     ExitCode::SUCCESS
+}
+
+/// `recon inspect`: the narrow question an operator asks holding a support
+/// ticket — "what happened to this transaction?" — instead of a window pass that
+/// also scans for orphans and re-evaluates every other record.
+///
+/// Exit codes differ from `scan` on purpose: one record has no gate to select,
+/// so the verdict itself decides. A verdict that is still undecided (`pending`
+/// or `unknown`) exits `2` and never `1`, because "not yet" must not read as
+/// "the money is wrong".
+async fn inspect(
+    config: &Config,
+    chain: std::sync::Arc<dyn ChainClient + Send + Sync>,
+    transaction: &str,
+    format: OutputFormat,
+    at_block: Option<u64>,
+) -> ExitCode {
+    let Some(tx) = lookup::normalize_transaction(transaction) else {
+        tracing::error!(
+            "inspect needs a 0x-prefixed 32-byte transaction hash, got {transaction:?}"
+        );
+        return ExitCode::from(78);
+    };
+    let ledger = match ledger_from_config(config) {
+        Ok(ledger) => ledger,
+        Err(e) => {
+            tracing::error!("{e}");
+            return ExitCode::from(78);
+        }
+    };
+    let records = match ledger.fetch().await {
+        Ok(records) => records,
+        Err(e) => {
+            tracing::error!("cannot read ledger: {e}");
+            return ExitCode::from(69);
+        }
+    };
+    let Some(record) = lookup::find_record(&records, &tx).cloned() else {
+        tracing::error!("no ledger record carries transaction {tx}");
+        return ExitCode::from(66);
+    };
+
+    let mut reconciler = reconciler_from_config(config, chain.clone());
+    if let Some(block) = at_block {
+        if block == 0 {
+            tracing::error!("--at-block must be at least 1");
+            return ExitCode::from(78);
+        }
+        let tip = match chain.tip().await {
+            Ok(tip) => tip,
+            Err(e) => {
+                tracing::error!("cannot verify --at-block against the chain: {e}");
+                return ExitCode::from(69);
+            }
+        };
+        if block > tip {
+            tracing::error!(
+                at_block = block,
+                tip,
+                "--at-block is ahead of the chain tip"
+            );
+            return ExitCode::from(78);
+        }
+        reconciler = reconciler.with_anchor_tip(block);
+    }
+
+    let now = now_unix();
+    let (tip, finding) = match reconciler.record(&record, now).await {
+        Ok(answer) => answer,
+        Err(e) => {
+            tracing::error!("reconciliation failed: {e}");
+            return ExitCode::from(69);
+        }
+    };
+    let answer = model::RecordAnswer {
+        mode: mode_label(config),
+        chain_id: config.chain.chain_id,
+        receiver: reconciler.receiver().to_owned(),
+        ledger: ledger.describe(),
+        generated_at: format_unix(now),
+        chain_tip: tip,
+        record: finding,
+    };
+    let rendered = match format {
+        OutputFormat::Text => report::answer_to_text(&answer),
+        OutputFormat::Markdown => report::answer_to_markdown(&answer),
+        OutputFormat::Json => match report::answer_to_json(&answer) {
+            Ok(text) => text,
+            Err(e) => {
+                tracing::error!("cannot serialise answer: {e}");
+                return ExitCode::from(70);
+            }
+        },
+        OutputFormat::Csv => {
+            tracing::error!("--format csv describes a window; use text, json or markdown");
+            return ExitCode::from(78);
+        }
+    };
+    if let Err(e) = write_stdout(&format!("{}\n", rendered.trim_end_matches('\n'))) {
+        tracing::error!("cannot write to stdout: {e}");
+        return ExitCode::from(74);
+    }
+    let code = inspect_code(answer.record.outcome);
+    tracing::info!(
+        id = %answer.record.id,
+        outcome = ?answer.record.outcome,
+        chain_tip = tip,
+        exit_code = code,
+        "inspect finished"
+    );
+    ExitCode::from(code)
+}
+
+/// `recon inspect` exit code: the verdict decides, because there is no gate to
+/// select for a single record.
+fn inspect_code(outcome: model::Outcome) -> u8 {
+    match outcome {
+        model::Outcome::Matched => 0,
+        model::Outcome::Mismatched | model::Outcome::Failed => 1,
+        model::Outcome::Pending | model::Outcome::Unknown => 2,
+    }
 }
 
 async fn serve(

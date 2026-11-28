@@ -37,7 +37,7 @@
 
 ```
 src/
-  main.rs        CLI (clap): probe / scan / capture / serve, logging to stderr
+  main.rs        CLI (clap): probe / inspect / scan / capture / serve, logging to stderr
   lib.rs         module wiring + config → (chain, ledger, reconciler) builders
   model.rs       domain types + parsing helpers
   error.rs       ReconError taxonomy (no panics on untrusted input)
@@ -48,6 +48,7 @@ src/
   ledger.rs      LedgerSource trait, FileLedger (JSONL), HonoReceiptFile
                  (kite-x402-hono SettlementReceipt export), HttpLedger, MemoryLedger
   reconcile.rs   Reconciler: per-record judgement, duplicate-claim detection, orphan detection
+  lookup.rs      one-transaction lookup shared by `recon inspect` and the HTTP record endpoint
   report.rs      text / json / markdown rendering + exit codes
   server.rs      axum router, bearer auth, AppState
 fixtures/

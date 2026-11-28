@@ -9,6 +9,7 @@ pub mod chain;
 pub mod config;
 pub mod error;
 pub mod ledger;
+pub mod lookup;
 pub mod mock;
 pub mod model;
 pub mod reconcile;

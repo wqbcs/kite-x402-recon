@@ -7,6 +7,15 @@ All notable changes to this project are documented here. Format follows
 
 ### Added
 
+- `recon inspect <transaction>`: the CLI half of the single-record answer. A support ticket names a
+  hash, so `scan` (which rescan for orphans and re-evaluates every record) is the wrong shape for
+  the question. `inspect` shares the hash normalisation and ledger lookup with
+  `GET /api/v1/records/{transaction}`, and its `--format json` body is the same document the API
+  returns, so scripts can move between the two surfaces without remapping fields. It renders
+  `text`, `json` or `markdown` (one-row table for a ticket) and supports `--at-block`; `csv` is
+  refused because one record is not a window. Exit codes follow the verdict (`0` matched, `1`
+  mismatched/failed, `2` pending/unknown, `66` no such record) rather than a finding-class gate:
+  "not decided yet" must not read as "the money is wrong".
 - `GET /api/v1/records/{transaction}`: judge one settlement on its own instead of a whole window.
   A support ticket names a hash, and re-running the window pass to look that one up also scans for
   orphans and re-evaluates every other record. The answer is the ledger record plus the same

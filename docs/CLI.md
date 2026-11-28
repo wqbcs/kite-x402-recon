@@ -117,6 +117,39 @@ RECON_CHAIN_MODE=mock \
 recon --config recon.example.toml scan
 ```
 
+## `recon inspect`
+
+Judges one settlement by its transaction hash, without running a window pass. This is the
+command for a support ticket: the ticket names a hash, not a block range, and a full `scan` would
+also rescan for orphans and re-evaluate every other record.
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `<transaction>` | required | `0x` plus 64 hex digits, either case; surrounding whitespace is ignored. |
+| `--format text\|json\|markdown` | `text` | Output rendering. `csv` is refused (`78`): a single record is not a window. |
+| `--at-block <n>` | current tip | Judge as of this block. Refused (`78`) when ahead of the tip. |
+
+```bash
+recon --config recon.toml inspect 0x1111…1111
+# mode=mock chain_id=2368 tip=1000 ledger=file:fixtures/ledger.jsonl receiver=0x2222… generated_at=…
+# MATCHED    inv_ok    amount=10000 tx=0x1111… block=990 confirmations=11 :: transfer of 10000 atomic units confirmed at block 990
+
+recon --config recon.toml inspect 0x4444…4444 --format markdown   # one-row table for a ticket
+recon --config recon.toml inspect 0x1111…1111 --format json | jq .record.outcome
+```
+
+- The JSON body is the same document `GET /api/v1/records/<transaction>` returns (`mode`,
+  `chain_id`, `receiver`, `ledger`, `generated_at`, `chain_tip`, `record`), so a script can move
+  between the CLI and the API without remapping fields.
+- The verdict is judged at the printed tip and against the printed receiver; both are required for
+  the answer to mean anything. In `mock` mode the text output also says the evidence is a fixture.
+- Duplicate claims are a cross-record rule, so this command never reports `unknown` because
+  another record also claims the hash. `scan` remains authoritative for that verdict; `inspect`
+  repeats the record's own reason verbatim.
+- Exit codes differ from `scan`: there is no finding-class gate for one record, so the verdict
+  decides — `0` matched, `1` mismatched/failed, `2` pending/unknown ("not decided yet" must not
+  read as "wrong"), `66` no ledger record carries the hash.
+
 ## `recon serve`
 
 | Option | Meaning |
@@ -180,7 +213,8 @@ recon --config recon.toml capture --window-minutes 1440 --out captured-24h.jsonl
 | --- | --- |
 | 0 | Clean: no class selected through `--fail-on` is present (pending is allowed unless asked for). |
 | 1 | At least one selected finding class is present: `differences` (`mismatched`/`failed`), `orphans` or `unknown`. |
-| 2 | `pending` is selected (`--strict` or `--fail-on pending`) and at least one record is still pending. |
+| 2 | `pending` is selected (`--strict` or `--fail-on pending`) and at least one record is still pending; for `inspect`, the record is `pending` or `unknown`. |
+| 66 | `inspect`: the ledger does not carry that transaction (no input). |
 | 69 | Chain/RPC failure. |
 | 70 | Internal failure (serialisation, server crash). |
 | 71 | Cannot bind the API address. |
